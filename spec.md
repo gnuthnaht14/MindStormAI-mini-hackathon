@@ -1,11 +1,11 @@
-# AI SPEC — PDF bài giảng thành gói ôn tập · Nhóm StudyFlow · Zone B
+# AI SPEC — PDF bài giảng thành gói ôn tập · Nhóm StudyFlow · Zone A
 
-Hướng: [ ] A — VLearn  [x] B — Trợ lý Học viên  [ ] C — Làn mở  
+Hướng: [X] A — VLearn  [ ] B — Trợ lý Học viên  [ ] C — Làn mở  
 Loại: [ ] Tối ưu tính năng có sẵn  [x] Tính năng mới
 
-**Trạng thái CP4:** Chốt theo nhánh bằng chứng B — working prototype có log định lượng.  
+**Trạng thái CP4:** Chốt theo nhánh bằng chứng A — working prototype có log định lượng.  
 **Owner:** Nhữ Trọng Thành.  
-**Ngày chốt quality bar:** 2026-07-30. Các ngưỡng tại §7 không được hạ sau thời điểm commit CP4.
+**Ngày chốt quality bar:** 2026-07-30. Các ngưỡng tại §7 chưa được chốt sau thời điểm commit CP4.
 
 ## §1. User & Job
 
