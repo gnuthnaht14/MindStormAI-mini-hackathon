@@ -19,9 +19,9 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
-from openai import OpenAI  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
+from studyflow.services.ai_service import create_openai_client  # noqa: E402
 from studyflow.services.pdf_service import extract_pdf_text  # noqa: E402
 
 PASS_THRESHOLD = 0.80
@@ -155,7 +155,7 @@ def ask_tutor(source_document: str, question: str) -> TutorResponse:
         raise RuntimeError("Thiếu OPENAI_API_KEY trong .env")
     document_text = get_document_text(source_document)
     model = os.getenv("OPENAI_MODEL", "gpt-5.6-sol")
-    client = OpenAI(api_key=api_key, timeout=60, max_retries=1)
+    client = create_openai_client(api_key)
     response = client.responses.parse(
         model=model,
         instructions=(

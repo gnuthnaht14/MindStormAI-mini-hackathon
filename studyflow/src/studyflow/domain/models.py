@@ -18,7 +18,6 @@ class DocumentStatus(StrEnum):
 
 
 class ArtifactType(StrEnum):
-    NOTES = "notes"
     SUMMARY = "summary"
     FLASHCARDS = "flashcards"
     QUIZ = "quiz"

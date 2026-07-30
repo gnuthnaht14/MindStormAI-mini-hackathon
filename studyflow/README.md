@@ -7,7 +7,9 @@ MVP Streamlit biến PDF bài giảng thành bản tóm tắt và bộ câu hỏ
 - Upload và kiểm tra PDF tối đa 20 MB.
 - Trích xuất text theo từng trang bằng PyMuPDF.
 - Cảnh báo PDF dạng ảnh hoặc tài liệu bị cắt do quá dài.
-- Tạo title, summary, key points và 5–10 câu hỏi bằng OpenAI Structured Outputs.
+- Tạo Summary V2 gồm tổng quan, mục tiêu học tập, khái niệm, quy trình, điểm dễ nhầm và takeaway.
+- Dẫn nguồn theo trang cho từng phần của summary và từng câu hỏi.
+- Tạo 5–10 câu hỏi bằng OpenAI Structured Outputs.
 - Xem đáp án trong expander.
 - Tải toàn bộ kết quả dưới dạng Markdown.
 - Dữ liệu demo dự phòng khi chưa có API key hoặc mạng không ổn định.

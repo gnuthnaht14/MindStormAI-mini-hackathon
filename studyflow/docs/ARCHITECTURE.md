@@ -61,7 +61,7 @@ starter_v0/
 4. Chunker tạo các `SourceChunk` có `slide_indexes` để giữ citation chính xác.
 5. `RetrievalIndex` index chunk; `DocumentRepository` cập nhật trạng thái `ready`.
 
-### 2. AI Notes / Summary / Flashcards / Quiz
+### 2. AI Summary / Flashcards / Quiz
 
 1. Presentation gửi `GenerateArtifactCommand` với session, document, loại artifact và scope slide.
 2. Application service lấy đúng chunks, dựng prompt theo artifact type rồi gọi `LLMClient` với output schema bắt buộc.
@@ -88,7 +88,7 @@ starter_v0/
 
 1. PDF/PPTX parser + local repositories.
 2. Ingestion pipeline + slide/chunk viewer data.
-3. Summary và notes với structured output.
+3. Summary V2 có structured output và citation theo trang.
 4. Retrieval-grounded AI Tutor.
 5. Flashcards và quiz + validation.
 6. FastAPI boundary, background jobs và persistence production.

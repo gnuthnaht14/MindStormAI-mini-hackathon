@@ -54,7 +54,7 @@ Dữ liệu dưới đây lấy trực tiếp từ khảo sát 51 người. Câu
   5. Không tự nộp bài hoặc làm bài thay sinh viên.
 - **Mức prototype:** [ ] Sketch [ ] Mock [x] Working.
   - Thật: PDF validation/extraction, gọi OpenAI, Pydantic parse, summary, quiz, download Markdown, error state.
-  - Mock/placeholder: AI Notes và AI Flashcards; demo backup dùng output cố định khi mạng/API lỗi.
+  - Mock/placeholder: AI Flashcards; demo backup dùng output cố định khi mạng/API lỗi. AI Notes đã được loại khỏi roadmap vì trùng vai trò với Summary V2.
 - **Automation:** [x] augment [ ] conditional [ ] automate.
   - AI đề xuất tài liệu ôn tập để sinh viên đọc và kiểm tra; không thay sinh viên ra quyết định học tập. Cost-of-error cao với deadline, quy trình, công thức và thông tin không có trong slide nên các nội dung này phải bám nguồn hoặc abstain.
 
@@ -162,3 +162,4 @@ Log CP5 phải ghi nguyên văn câu trả lời, tên/role người test, PDF d
 | 2026-07-30 | Ẩn API key/model khỏi UI; dùng `.env` | Product owner yêu cầu cấu hình thuộc code |
 | 2026-07-30 CP4 | Chọn lát cắt gói ôn tập; khóa quality bar | Impact 18/20; first eval 90%, zero-tolerance 0 |
 | 2026-07-30 CP4 | Thay assumption impact bằng khảo sát `n=51` | 66,7% ưu tiên summary/key concepts; hai pain lớn nhất đạt 58,8% và 56,9% |
+| 2026-07-30 | Loại AI Notes, bắt đầu Summary V2 có citation | Notes trùng vai trò; tập trung nhu cầu summary/key concepts của 66,7% khảo sát |

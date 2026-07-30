@@ -5,10 +5,11 @@ import json
 import os
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import streamlit as st
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 
 ROOT = Path(__file__).resolve().parent
@@ -17,35 +18,38 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from studyflow.config import AppSettings  # noqa: E402
-from studyflow.models import PDFExtraction, Question, StudyMaterial  # noqa: E402
+from studyflow.models import CitedPoint, PDFExtraction, Question, StudyMaterial  # noqa: E402
 from studyflow.services import (  # noqa: E402
     AIGenerationError,
     MissingAPIKeyError,
     PDFExtractionError,
     PDFValidationError,
     build_markdown,
+    calculate_quiz_score,
     extract_pdf_text,
     generate_study_material,
+    is_correct_answer,
     validate_pdf,
 )
 
 
-load_dotenv(ROOT / ".env")
+# Streamlit keeps the Python process alive across reruns. Override previously
+# loaded values so edits to the local .env take effect without stale credentials.
+load_dotenv(ROOT / ".env", override=True)
 SETTINGS = AppSettings.from_env()
 DEMO_LESSON_PATH = ROOT / "sample" / "demo_lesson.md"
 DEMO_OUTPUT_PATH = ROOT / "sample" / "demo_output.json"
-DEMO_PDF_PATH = ROOT / "sample" / "demo.pdf"
 
 QUESTION_TYPE_OPTIONS = {
     "Trắc nghiệm": "multiple_choice",
     "Đúng / Sai": "true_false",
-    "Tự luận ngắn": "short_answer",
 }
 QUESTION_TYPE_LABELS = {
     "multiple_choice": "Trắc nghiệm",
     "true_false": "Đúng / Sai",
     "short_answer": "Tự luận ngắn",
 }
+SESSION_SCHEMA_VERSION = 4
 
 
 st.set_page_config(
@@ -72,18 +76,17 @@ def inject_styles() -> None:
         html, body, [class*="css"] { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .stApp { background: var(--canvas); color: var(--ink); }
         [data-testid="stHeader"] { background: transparent; }
-        /* Keep Streamlit's sidebar controls visible. Hiding the whole toolbar
-           also removes the only way to reopen a collapsed sidebar. */
         [data-testid="stToolbar"] { display: flex; }
-        [data-testid="stSidebarCollapsedControl"] {
-            display: block !important;
-            visibility: visible !important;
-            z-index: 1000000;
-        }
-        .block-container { max-width: 1500px; padding: 1.35rem 1.6rem 3rem; }
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="stSidebarCollapsedControl"] { display:none !important; }
+        .block-container { max-width: 1600px; padding: 1rem 1.15rem 2.5rem; }
 
-        [data-testid="stSidebar"] { background: #fff; border-right: 1px solid var(--line); }
-        [data-testid="stSidebar"] > div { padding-top: 1.25rem; }
+        [data-testid="stSidebar"] {
+            width:16.5rem !important; min-width:16.5rem !important; max-width:16.5rem !important;
+            background:#fff; border-right:1px solid var(--line);
+        }
+        [data-testid="stSidebar"] > div:first-child { width:16.5rem !important; }
+        [data-testid="stSidebar"] > div { padding-top:1rem; }
         [data-testid="stSidebar"] .stButton > button { width: 100%; }
 
         h1, h2, h3 { letter-spacing: -.035em; color: var(--ink); }
@@ -119,10 +122,16 @@ def inject_styles() -> None:
         .stButton > button[kind="primary"] { border:0; background:var(--primary); box-shadow:0 8px 18px rgba(111,121,255,.18); }
         .stButton > button[kind="primary"]:hover { background:var(--primary-dark); }
 
-        [data-testid="stTabs"] [data-baseweb="tab-list"] { gap:.25rem; background:#e9e9ff; padding:.35rem .35rem 0; border-radius:16px 16px 0 0; }
-        [data-testid="stTabs"] [role="tab"] { border-radius:12px 12px 0 0; padding:.8rem .95rem; font-weight:750; }
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            gap:.2rem; background:transparent; padding:0; border-bottom:1px solid var(--line);
+        }
+        [data-testid="stTabs"] [role="tab"] {
+            border-radius:10px 10px 0 0; padding:.72rem .9rem; font-weight:700;
+        }
         [data-testid="stTabs"] [aria-selected="true"] { background:#fff; color:var(--primary); }
-        [data-testid="stTabs"] [data-baseweb="tab-panel"] { background:#fff; border-radius:0 0 18px 18px; padding:1.2rem; border:1px solid #eceef5; border-top:0; }
+        [data-testid="stTabs"] [data-baseweb="tab-panel"] {
+            background:transparent; border:0; border-radius:0; padding:1rem 0 0;
+        }
 
         .metric-row { display:grid; grid-template-columns:repeat(3,1fr); gap:.65rem; margin:.75rem 0 1rem; }
         .metric-card { border:1px solid var(--line); border-radius:13px; padding:.8rem .9rem; background:#fff; }
@@ -137,17 +146,32 @@ def inject_styles() -> None:
         .key-point span { font-size:.87rem; line-height:1.45; }
         .question-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
         .question-type { display:inline-block; padding:.25rem .55rem; border-radius:999px; background:#efefff; color:var(--primary); font-size:.65rem; font-weight:800; }
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.question-head) {
+            border-color:#e1e4ef; border-radius:14px; background:#fff;
+            box-shadow:0 3px 12px rgba(29,36,74,.035);
+        }
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.question-head) [data-testid="stRadio"] label {
+            padding:.18rem 0;
+        }
 
-        .tutor-panel { border:1px solid #e5e7f0; border-radius:20px; background:#fff; padding:1.2rem; min-height:530px; position:sticky; top:1rem; }
+        [data-testid="stColumn"]:has(.tutor-panel) {
+            position:sticky !important; top:.75rem; align-self:flex-start;
+            height:fit-content; z-index:20;
+        }
+        .tutor-panel {
+            border:1px solid #e5e7f0; border-radius:16px; background:#fff;
+            padding:1rem; min-height:0; max-height:calc(100vh - 1.5rem); overflow-y:auto;
+            box-shadow:0 8px 24px rgba(30,36,74,.055);
+        }
         .tutor-title { color:#9297a5; font-size:.8rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
         .ai-orb {
-            width:132px; height:132px; margin:2rem auto 1.55rem; border-radius:50%;
+            width:76px; height:76px; margin:.8rem auto .75rem; border-radius:50%;
             background:radial-gradient(circle at 58% 30%, #79e0ff 0 8%, #408fff 22%, transparent 44%), radial-gradient(circle at 35% 67%, #7034ff 0 15%, #1725ad 45%, #4b0eae 67%, #b91af5 86%);
-            box-shadow:inset -13px -20px 24px rgba(22,10,116,.38), inset 10px 10px 20px rgba(245,136,255,.38), 0 13px 28px rgba(102,44,236,.2);
+            box-shadow:inset -8px -11px 14px rgba(22,10,116,.38), inset 6px 6px 12px rgba(245,136,255,.38), 0 8px 18px rgba(102,44,236,.18);
         }
-        .tutor-panel h3 { text-align:center; margin:.2rem 0 .55rem; }
+        .tutor-panel h3 { text-align:center; margin:.15rem 0 .4rem; font-size:1.05rem; }
         .tutor-panel > p { text-align:center; color:var(--muted); font-size:.8rem; line-height:1.5; }
-        .pipeline-step { display:flex; gap:.7rem; align-items:center; padding:.65rem 0; border-bottom:1px solid #f0f1f5; font-size:.78rem; color:#6a7183; }
+        .pipeline-step { display:flex; gap:.6rem; align-items:center; padding:.52rem 0; border-bottom:1px solid #f0f1f5; font-size:.76rem; color:#6a7183; }
         .step-dot { width:24px; height:24px; border-radius:8px; display:grid; place-items:center; background:#f0f1ff; color:var(--primary); font-size:.7rem; font-weight:800; }
         .step-dot.done { background:#e8f7ef; color:#1f9e61; }
         .coming { margin-top:1rem; padding:.8rem; border-radius:12px; background:#f8f8fc; color:#81879a; font-size:.72rem; text-align:center; }
@@ -156,7 +180,8 @@ def inject_styles() -> None:
             .block-container { padding:.8rem .7rem 2rem; }
             .hero-card { padding:1.3rem; }
             .metric-row { grid-template-columns:1fr; }
-            .tutor-panel { position:static; min-height:auto; }
+            [data-testid="stColumn"]:has(.tutor-panel) { position:static !important; }
+            .tutor-panel { max-height:none; overflow:visible; }
         }
         </style>
         """,
@@ -165,7 +190,21 @@ def inject_styles() -> None:
 
 
 def init_state() -> None:
+    if st.session_state.get("schema_version") != SESSION_SCHEMA_VERSION:
+        for key in list(st.session_state):
+            if key in {
+                "uploader_nonce",
+                "document_hash",
+                "extraction",
+                "material",
+                "processing_error",
+                "generation_seconds",
+                "is_demo",
+            } or key.startswith("pdf_upload_") or key.startswith("quiz_"):
+                del st.session_state[key]
+
     defaults = {
+        "schema_version": SESSION_SCHEMA_VERSION,
         "uploader_nonce": 0,
         "document_hash": None,
         "extraction": None,
@@ -179,14 +218,22 @@ def init_state() -> None:
             st.session_state[key] = value
 
 
+def clear_quiz_state() -> None:
+    for key in list(st.session_state):
+        if key.startswith("quiz_"):
+            del st.session_state[key]
+
+
 def clear_document_state(*, reset_uploader: bool = False) -> None:
     for key in ("document_hash", "extraction", "material", "processing_error", "generation_seconds", "is_demo"):
         st.session_state[key] = None if key != "is_demo" else False
     if reset_uploader:
         st.session_state.uploader_nonce += 1
+    clear_quiz_state()
 
 
 def load_demo() -> None:
+    clear_quiz_state()
     demo_text = DEMO_LESSON_PATH.read_text(encoding="utf-8")
     sections = [section.strip() for section in demo_text.split("\n## ") if section.strip()]
     material = StudyMaterial.model_validate_json(DEMO_OUTPUT_PATH.read_text(encoding="utf-8"))
@@ -208,8 +255,14 @@ def load_demo() -> None:
 
 
 def get_configured_api_key() -> str | None:
-    if os.getenv("OPENAI_API_KEY"):
-        return os.getenv("OPENAI_API_KEY")
+    # Read the file on every Streamlit rerun. The long-lived development
+    # process may otherwise retain a previous credential in os.environ.
+    file_key = (dotenv_values(ROOT / ".env").get("OPENAI_API_KEY") or "").strip()
+    if file_key:
+        return file_key
+    environment_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if environment_key:
+        return environment_key
     try:
         return st.secrets.get("OPENAI_API_KEY")
     except Exception:
@@ -236,31 +289,69 @@ def render_metrics(extraction: PDFExtraction) -> None:
     )
 
 
-def render_question(question: Question, index: int) -> None:
+def source_label(source_pages: Sequence[int]) -> str:
+    pages = ", ".join(str(page) for page in source_pages)
+    return f"📎 Nguồn: trang {pages}"
+
+
+def render_cited_points(items: Sequence[CitedPoint], *, numbered: bool = False) -> None:
+    for index, item in enumerate(items, start=1):
+        prefix = f"**{index}.** " if numbered else "- "
+        st.markdown(f"{prefix}{item.text}")
+        st.caption(source_label(item.source_pages))
+
+
+def lock_quiz_answer(choice_key: str, result_key: str, question: Question) -> None:
+    selected = st.session_state.get(choice_key)
+    if selected is not None and result_key not in st.session_state:
+        st.session_state[result_key] = is_correct_answer(question, selected)
+
+
+def render_question(question: Question, index: int, namespace: str) -> bool | None:
     with st.container(border=True):
         st.markdown(
             f'<div class="question-head"><strong>Câu {index}</strong><span class="question-type">{QUESTION_TYPE_LABELS[question.type]}</span></div>',
             unsafe_allow_html=True,
         )
         st.markdown(f"**{question.question}**")
-        if question.options:
-            st.radio(
-                "Chọn câu trả lời",
-                question.options,
-                index=None,
-                key=f"question_{index}_{hash(question.question)}",
-                label_visibility="collapsed",
-            )
-        with st.expander("Xem đáp án và giải thích"):
-            st.success(f"Đáp án: {question.answer}")
-            st.markdown(question.explanation)
+        st.caption(source_label(question.source_pages))
+        if not question.options:
+            st.warning("Câu hỏi này không thể chấm tự động và đã bị bỏ khỏi định dạng được hỗ trợ.")
+            return None
+
+        choice_key = f"quiz_choice_{namespace}_{index}"
+        result_key = f"quiz_result_{namespace}_{index}"
+        answered = result_key in st.session_state
+        selected = st.radio(
+            "Chọn câu trả lời",
+            question.options,
+            index=None,
+            key=choice_key,
+            label_visibility="collapsed",
+            disabled=answered,
+            on_change=lock_quiz_answer,
+            args=(choice_key, result_key, question),
+        )
+        if not answered:
+            st.caption("Chỉ được chọn một lần. Hãy cân nhắc trước khi trả lời.")
+            return None
+
+        correct = bool(st.session_state[result_key])
+        if correct:
+            st.success("Chính xác! Bạn đã chọn đúng.", icon="✅")
+        else:
+            st.error(f"Chưa đúng. Đáp án đúng là: {question.answer}", icon="❌")
+        st.markdown(f"**Giải thích:** {question.explanation}")
+        st.caption(source_label(question.source_pages))
+        st.caption("🔒 Câu trả lời đã được khóa.")
+        return correct
 
 
 inject_styles()
 init_state()
 
 api_key = get_configured_api_key()
-selected_model = SETTINGS.openai_model
+selected_model = os.getenv("OPENAI_MODEL", "gpt-5.6-sol")
 
 with st.sidebar:
     st.markdown(
@@ -276,7 +367,7 @@ with st.sidebar:
     selected_type_labels = st.multiselect(
         "Dạng câu hỏi",
         list(QUESTION_TYPE_OPTIONS),
-        default=["Trắc nghiệm", "Tự luận ngắn"],
+        default=["Trắc nghiệm", "Đúng / Sai"],
     )
     st.caption("MVP dùng một lần gọi AI để tạo summary và quiz cùng lúc.")
 
@@ -285,13 +376,6 @@ with st.sidebar:
     if st.button("▶ Dùng dữ liệu demo", use_container_width=True):
         load_demo()
         st.rerun()
-    st.download_button(
-        "↓ Tải PDF demo",
-        data=DEMO_PDF_PATH.read_bytes(),
-        file_name="studyflow-demo.pdf",
-        mime="application/pdf",
-        use_container_width=True,
-    )
     st.caption("Output mẫu giúp demo giao diện khi API hoặc mạng gặp sự cố.")
 
 st.markdown(
@@ -303,13 +387,13 @@ st.markdown(
     <section class="hero-card">
         <div class="eyebrow">From slides to active learning</div>
         <h1>Biến slide thành tài liệu ôn tập trong một lần nhấn.</h1>
-        <p>Upload PDF có text layer, StudyFlow sẽ đọc nội dung và tạo bản tóm tắt, ý chính cùng bộ câu hỏi có đáp án bằng tiếng Việt.</p>
+        <p>Upload PDF có text layer, StudyFlow sẽ tạo bản tóm tắt có cấu trúc, giải thích khái niệm và dẫn nguồn theo từng trang.</p>
     </section>
     """,
     unsafe_allow_html=True,
 )
 
-main_col, tutor_col = st.columns([3.15, 1], gap="medium")
+main_col, tutor_col = st.columns([4, 1.05], gap="small")
 
 with main_col:
     with st.container(border=True):
@@ -364,13 +448,15 @@ with main_col:
                 started_at = time.perf_counter()
                 try:
                     with st.spinner("AI đang tóm tắt và tạo câu hỏi ôn tập…"):
-                        st.session_state.material = generate_study_material(
+                        new_material = generate_study_material(
                             extraction.text,
                             question_count=question_count,
                             question_types=selected_question_types,
                             api_key=api_key,
-                            model=selected_model.strip() or SETTINGS.openai_model,
+                            model=selected_model.strip() or "gpt-5.6-sol",
                         )
+                        clear_quiz_state()
+                        st.session_state.material = new_material
                     st.session_state.generation_seconds = time.perf_counter() - started_at
                     st.session_state.is_demo = False
                     st.rerun()
@@ -378,8 +464,8 @@ with main_col:
                     st.error(str(exc), icon="⚠️")
 
     material: StudyMaterial | None = st.session_state.material
-    original_tab, notes_tab, summary_tab, flashcards_tab, quiz_tab = st.tabs(
-        ["Original Content", "AI Notes", "AI Summary", "AI Flashcards", "AI Quiz"]
+    original_tab, summary_tab, flashcards_tab, quiz_tab = st.tabs(
+        ["Original Content", "AI Summary", "AI Flashcards", "AI Quiz"]
     )
 
     with original_tab:
@@ -392,9 +478,6 @@ with main_col:
                 with st.expander(f"Trang {page_index}", expanded=page_index == 1):
                     st.text(page_text or "Trang này không có text layer.")
 
-    with notes_tab:
-        render_empty("AI Notes sẽ có trong bước tiếp theo", "MVP hiện tập trung vào happy path PDF → Summary → Quiz.", "✎")
-
     with summary_tab:
         if material is None:
             render_empty("Chưa có bản tóm tắt", "Đọc PDF và nhấn “Tạo tài liệu ôn tập” để bắt đầu.")
@@ -402,15 +485,37 @@ with main_col:
             demo_label = " · output demo" if st.session_state.is_demo else ""
             elapsed = st.session_state.generation_seconds
             timing = f" · {elapsed:.1f}s" if elapsed is not None else ""
-            st.caption(f"{len(material.key_points)} ý chính{timing}{demo_label}")
+            st.caption(f"{len(material.key_concepts)} khái niệm trọng tâm{timing}{demo_label}")
             st.header(material.title)
-            st.markdown(material.summary)
-            st.subheader("Ý chính cần nhớ")
-            for index, key_point in enumerate(material.key_points, start=1):
-                st.markdown(
-                    f'<div class="key-point"><b>{index}</b><span>{key_point}</span></div>',
-                    unsafe_allow_html=True,
-                )
+
+            st.subheader("Tổng quan 30 giây")
+            st.info(material.overview.text)
+            st.caption(source_label(material.overview.source_pages))
+
+            st.subheader("Sau bài này, bạn cần nắm được")
+            render_cited_points(material.learning_objectives)
+
+            st.subheader("Khái niệm trọng tâm")
+            for concept in material.key_concepts:
+                with st.container(border=True):
+                    st.markdown(f"### {concept.name}")
+                    st.markdown(concept.simple_explanation)
+                    if concept.example:
+                        st.markdown(f"**Ví dụ trong tài liệu:** {concept.example}")
+                    st.caption(source_label(concept.source_pages))
+
+            if material.process_steps:
+                st.subheader("Quy trình từng bước")
+                render_cited_points(material.process_steps, numbered=True)
+
+            if material.common_misconceptions:
+                st.subheader("Điểm dễ nhầm")
+                for item in material.common_misconceptions:
+                    st.warning(item.text)
+                    st.caption(source_label(item.source_pages))
+
+            st.subheader("Điều cần nhớ")
+            render_cited_points(material.takeaways)
 
             markdown_export = build_markdown(material, extraction)
             download_col, copy_col = st.columns(2)
@@ -435,9 +540,31 @@ with main_col:
             render_empty("Chưa có câu hỏi ôn tập", "AI sẽ tạo 5–10 câu hỏi có đáp án và giải thích từ PDF của bạn.", "☷")
         else:
             st.subheader(f"Bộ câu hỏi ôn tập · {len(material.questions)} câu")
-            st.caption("Thử trả lời trước, sau đó mở phần đáp án để tự kiểm tra.")
+            st.caption("Mỗi câu chỉ được trả lời một lần. Điểm chỉ hiển thị sau khi hoàn thành toàn bộ bài quiz.")
+            quiz_namespace = st.session_state.document_hash or hashlib.sha256(
+                material.title.encode("utf-8")
+            ).hexdigest()
+            checked_results: list[bool] = []
             for question_index, question in enumerate(material.questions, start=1):
-                render_question(question, question_index)
+                result = render_question(question, question_index, quiz_namespace)
+                if result is not None:
+                    checked_results.append(result)
+            answered_count = len(checked_results)
+            total_questions = len(material.questions)
+            st.progress(
+                answered_count / total_questions,
+                text=f"Đã trả lời {answered_count}/{total_questions} câu",
+            )
+            if answered_count == total_questions:
+                correct_count = sum(checked_results)
+                score = calculate_quiz_score(correct_count, total_questions)
+                st.markdown("---")
+                st.metric(
+                    "Điểm Quiz",
+                    f"{score:.1f}/10",
+                    delta=f"{correct_count}/{total_questions} câu đúng",
+                    delta_color="off",
+                )
 
 with tutor_col:
     extraction_ready = extraction is not None

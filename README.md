@@ -1,19 +1,18 @@
 # StudyFlow AI
 LINK SLIDE TRÌNH BÀY: https://canva.link/87egwdq4rg9mzja
-Chatbot hỗ trợ học từ slide: đọc PDF/PPTX, tạo AI Notes, AI Summary, AI Flashcards, AI Quiz và trả lời có dẫn chiếu theo từng slide.
+Trợ lý hỗ trợ học từ slide: đọc PDF, tạo AI Summary có cấu trúc và dẫn nguồn, sau đó sinh bộ câu hỏi ôn tập có đáp án.
 
 ## Trạng thái hiện tại
 
-- UI prototype chạy bằng Streamlit.
-- Backend đã được refactor sang modular monolith trong `starter_v0/src/studyflow`.
-- Domain models và dependency ports đã sẵn sàng.
-- Parser, retrieval, generation và API chưa được implement.
-- Research agent cũ được bảo toàn trong `starter_v0/legacy/research_agent`.
+- UI và backend MVP chạy bằng Streamlit trong `studyflow/`.
+- PyMuPDF parser và OpenAI structured generation đã hoạt động.
+- Summary V2 và quiz có citation theo trang.
+- Flashcards và retrieval-grounded AI Tutor nằm trong roadmap tiếp theo.
 
 ## Chạy UI
 
 ```bash
-cd starter_v0
+cd studyflow
 python -m pip install -r requirements.txt
 streamlit run app.py
 ```
@@ -22,4 +21,4 @@ Mở `http://localhost:8501`.
 
 ## Tài liệu kiến trúc
 
-Xem `starter_v0/docs/ARCHITECTURE.md` để đọc keep/drop map, dependency boundaries, data flow và thứ tự triển khai backend.
+Xem `studyflow/docs/ARCHITECTURE.md` để đọc dependency boundaries, data flow và thứ tự triển khai backend.
