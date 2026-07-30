@@ -1,5 +1,5 @@
 # StudyFlow AI
-
+LINK SLIDE TRÌNH BÀY: https://canva.link/87egwdq4rg9mzja
 Chatbot hỗ trợ học từ slide: đọc PDF/PPTX, tạo AI Notes, AI Summary, AI Flashcards, AI Quiz và trả lời có dẫn chiếu theo từng slide.
 
 ## Trạng thái hiện tại
