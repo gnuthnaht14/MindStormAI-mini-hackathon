@@ -12,27 +12,31 @@ Loại: [ ] Tối ưu tính năng có sẵn  [x] Tính năng mới
 - **Job executor + workflow:** Sinh viên sau buổi học nhận file PDF, mở và đọc lại từng slide, tự tìm ý chính, tự ghi chú và tự nghĩ câu hỏi để kiểm tra mức hiểu. Sơ đồ/Canvas: [evidence/cp1-canvas.md](evidence/cp1-canvas.md).
 - **Core JTBD:** Khi vừa học xong một bài có slide, sinh viên muốn nhanh chóng hiểu phần cần nhớ và tự kiểm tra lại kiến thức để chuẩn bị cho buổi học hoặc bài tập tiếp theo.
 - **Problem statement:** Sinh viên có slide nhưng phải đọc lại toàn bộ, tự lọc ý chính và tự tạo câu hỏi; công việc lặp lại này tốn thời gian và phần ghi chú thường khó dùng để ôn tập.
-- **Evidence — chuẩn B, log đầy đủ:** [evidence/cp4-evidence-log.md](evidence/cp4-evidence-log.md).
-  - Quan sát trực tiếp hiện có: `n = 1` product owner đồng thời là người dùng thử; 5 phát biểu/vấn đề nguyên văn đã được ghi log. Chưa tuyên bố đây là khảo sát đại diện.
+- **Evidence — chuẩn A và B, log đầy đủ:** [evidence/cp4-evidence-log.md](evidence/cp4-evidence-log.md).
+  - Khảo sát nhu cầu `n = 51`: 30/51 (58,8%) gặp khó vì quá nhiều thông tin/khó xác định trọng tâm; 29/51 (56,9%) mất nhiều thời gian đọc lại slide; 23/51 (45,1%) thiếu câu hỏi để tự kiểm tra.
+  - Nhu cầu chức năng: 34/51 (66,7%) muốn liệt kê kiến thức trọng tâm, 27/51 (52,9%) muốn tự động tổng hợp/tóm tắt, 26/51 (51,0%) muốn câu hỏi trắc nghiệm.
+  - Khi buộc chọn một chức năng quan trọng nhất, 22/51 (43,1%) chọn xác định kiến thức trọng tâm và 12/51 (23,5%) chọn tóm tắt bài học; cộng lại 34/51 (66,7%) ưu tiên lõi summary + key concepts.
+  - Mức quan tâm với tính năng tự động cung cấp summary + câu hỏi: điểm trung bình 3,76/5; 31/51 (60,8%) chấm 4–5 và 47/51 (92,2%) chấm từ 3 trở lên.
+  - Quan sát trực tiếp bổ sung: `n = 1` product owner/người dùng thử với 5 phát biểu nguyên văn về clarity và usability; không trộn observation này vào tỷ lệ khảo sát.
   - Prototype thật: upload PDF, PyMuPDF extraction, OpenAI structured output, summary, quiz và Markdown export.
   - Log tự động 2026-07-30: 20 case, 18 PASS, 2 FAIL, 0 ERROR, pass rate 90%, zero-tolerance violation 0.
   - Unit test: 10/10 PASS; Streamlit health endpoint trả HTTP 200.
 
 ## §2. Impact & quyết định chọn
 
-Điểm 1–5. `Tổng = bằng chứng nhu cầu + tần suất + mức tốn công + khả thi trong checkpoint`; số phút là giả định cần kiểm chứng ở CP5, không phải kết quả khảo sát.
+Dữ liệu dưới đây lấy trực tiếp từ khảo sát 51 người. Câu nhu cầu là multiple-choice nên không cộng các lựa chọn để suy ra số người duy nhất.
 
-| Ứng viên | Bao nhiêu người có bằng chứng | Tần suất dự kiến | Tốn mỗi lần | Khả thi | Tổng /20 |
-|---|---:|---:|---:|---:|---:|
-| A. PDF → summary dễ hiểu + quiz | 1/1 người thử gặp vấn đề | 1 lần/bài học (5/5) | 15–30 phút tự đọc/lọc ý (4/5) | Working prototype (5/5) | **18** |
-| B. Chat Q&A có dẫn trang | Chưa phỏng vấn riêng (2/5) | 2–5 câu/bài (4/5) | 2–5 phút tra mỗi câu (3/5) | Adapter có, UI chưa có (3/5) | **12** |
-| C. Flashcard tự động | Chưa có bằng chứng trực tiếp (1/5) | Trước kỳ ôn tập (3/5) | 10–20 phút tự tạo (3/5) | UI placeholder (2/5) | **9** |
-| D. OCR slide ảnh | Có rủi ro kỹ thuật, chưa có user log (1/5) | Chỉ với PDF không có text (2/5) | Không xử lý được bằng MVP (4/5) | Ngoài scope hiện tại (1/5) | **8** |
+| Ứng viên làm lát cắt chính | Số người chọn là chức năng mong muốn | Số người chọn quan trọng nhất | Pain liên quan | Khả thi hiện tại | Quyết định |
+|---|---:|---:|---|---|---|
+| A. Summary có kiến thức trọng tâm | Key concepts 34/51 (66,7%); summary 27/51 (52,9%) | Key concepts 22 + summary 12 = **34/51 (66,7%)** | Quá nhiều thông tin 30/51; đọc lại tốn thời gian 29/51 | Working prototype | **CHỌN** |
+| B. Bộ câu hỏi ôn tập | Trắc nghiệm 26/51 (51,0%); tự luận 14/51 (27,5%) | 6/51 (11,8%) | Thiếu câu hỏi tự kiểm tra 23/51 (45,1%) | Đã có quiz có đáp án | Không chọn làm lõi; giữ làm artifact hỗ trợ |
+| C. Q&A theo bài học | 21/51 (41,2%) | 7/51 (13,7%) | Cần tra lại nội dung sau khi học | Adapter có, UI chưa có | Tạm hoãn sau khi summary ổn định |
+| D. Giải thích đáp án/kiến thức | 20/51 (39,2%) | 4/51 (7,8%) | Cần hiểu vì sao đúng/sai | Đã có explanation ngắn | Không chọn làm lát cắt độc lập |
 
-- **ĐÃ LOẠI C — Flashcard:** chưa có evidence trực tiếp; nếu summary chưa rõ thì flashcard sẽ khuếch đại nội dung kém.
-- **ĐÃ LOẠI D — OCR:** cost triển khai và lỗi cao, không cần cho happy path PDF có text layer.
-- **TẠM HOÃN B — Q&A:** có giá trị nhưng tạo thêm interaction loop và yêu cầu citation/retrieval; chỉ làm sau khi lát cắt một-click ổn định.
-- **CHỌN A:** điểm 18/20, có pain được nói trực tiếp, prototype đã chạy và tạo giá trị nhìn thấy trong một lần nhấn.
+- **ĐÃ LOẠI B khỏi vai trò lát cắt chính:** 11,8% chọn câu hỏi là quan trọng nhất, thấp hơn 43,1% chọn xác định kiến thức trọng tâm; quiz vẫn đi kèm để phục vụ 45,1% đang thiếu công cụ tự kiểm tra.
+- **TẠM HOÃN C — Q&A:** 41,2% muốn dùng nhưng chỉ 13,7% xem là quan trọng nhất; cần thêm citation/retrieval và interaction loop.
+- **ĐÃ GỘP D vào quiz:** 39,2% muốn giải thích đáp án nhưng chỉ 7,8% chọn là ưu tiên số một; explanation được giữ trong từng câu hỏi thay vì thành feature riêng.
+- **CHỌN A:** 66,7% chọn summary hoặc xác định trọng tâm là chức năng quan trọng nhất; lựa chọn này đồng thời xử lý hai pain lớn nhất là quá nhiều thông tin (58,8%) và mất thời gian đọc lại (56,9%).
 
 ## §3. Giải pháp tương tự đã nghiên cứu
 
@@ -133,6 +137,8 @@ Hai case fail là EVAL-014 và EVAL-016: action đều đúng `CLARIFY`, nhưng 
 - **WU-02 — cần team điền tên người đã đồng ý test trước CP5.**
 - **WU-03 — cần team điền tên người đã đồng ý test trước CP5.**
 
+Khảo sát có 51 người trả lời nhưng báo cáo tổng hợp không chứa tên, nên chưa được dùng để tự điền willing users. Ưu tiên mời 3 người trong nhóm 31/51 đã chấm mức quan tâm 4–5 và ghi tên sau khi họ đồng ý test.
+
 Ba câu hỏi cố định, người phỏng vấn/log: **Nhữ Trọng Thành**.
 
 1. Không mở lại slide, bạn hãy kể lại ba ý chính vừa đọc; phần nào khiến bạn hiểu sai hoặc không hiểu?
@@ -156,3 +162,4 @@ Log CP5 phải ghi nguyên văn câu trả lời, tên/role người test, PDF d
 | 2026-07-30 | Thêm quiz và eval | Commits `ca070d8`, `2e06ddf` |
 | 2026-07-30 | Ẩn API key/model khỏi UI; dùng `.env` | Product owner yêu cầu cấu hình thuộc code |
 | 2026-07-30 CP4 | Chọn lát cắt gói ôn tập; khóa quality bar | Impact 18/20; first eval 90%, zero-tolerance 0 |
+| 2026-07-30 CP4 | Thay assumption impact bằng khảo sát `n=51` | 66,7% ưu tiên summary/key concepts; hai pain lớn nhất đạt 58,8% và 56,9% |
