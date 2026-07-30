@@ -26,34 +26,41 @@ def material_fixture() -> StudyMaterial:
     )
 
 
-class FakeResponses:
+class FakeCompletions:
     def __init__(self, material: StudyMaterial) -> None:
         self.material = material
         self.kwargs = None
 
     def parse(self, **kwargs):
         self.kwargs = kwargs
-        return type("FakeResponse", (), {"output_parsed": self.material})()
+        message = type("FakeMessage", (), {"parsed": self.material})()
+        return type("FakeResponse", (), {"choices": [type("FakeChoice", (), {"message": message})()]})()
+
+
+class FakeChat:
+    def __init__(self, material: StudyMaterial) -> None:
+        self.completions = FakeCompletions(material)
 
 
 class FakeClient:
     def __init__(self, material: StudyMaterial) -> None:
-        self.responses = FakeResponses(material)
+        self.chat = FakeChat(material)
 
 
 class AIServiceTests(unittest.TestCase):
-    def test_generate_uses_one_structured_responses_call(self) -> None:
+    def test_generate_uses_one_structured_chat_call(self) -> None:
         client = FakeClient(material_fixture())
         result = generate_study_material(
             "Nội dung bài học đủ dài để tạo câu hỏi.",
             question_count=5,
             question_types=("short_answer",),
-            model="gpt-5.6-sol",
+            model="openai/gpt-4o-mini",
             client=client,
         )
         self.assertEqual(result.title, "Bài học thử nghiệm")
-        self.assertIs(client.responses.kwargs["text_format"], StudyMaterial)
-        self.assertIn("đúng 5 câu hỏi", client.responses.kwargs["input"])
+        self.assertIs(client.chat.completions.kwargs["response_format"], StudyMaterial)
+        user_msgs = [m for m in client.chat.completions.kwargs["messages"] if m["role"] == "user"]
+        self.assertTrue(any("đúng 5 câu hỏi" in m["content"] for m in user_msgs))
 
     def test_generate_requires_api_key_without_injected_client(self) -> None:
         with patch.dict("os.environ", {"OPENAI_API_KEY": ""}):

@@ -370,6 +370,7 @@ with main_col:
                             question_types=selected_question_types,
                             api_key=api_key,
                             model=selected_model.strip() or SETTINGS.openai_model,
+                            base_url=SETTINGS.openai_base_url,
                         )
                     st.session_state.generation_seconds = time.perf_counter() - started_at
                     st.session_state.is_demo = False

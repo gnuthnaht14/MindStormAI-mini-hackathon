@@ -8,7 +8,8 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, 
 from studyflow.models import QuestionType, StudyMaterial
 
 
-DEFAULT_MODEL = "gpt-5.6-sol"
+DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 SYSTEM_PROMPT = """Bạn là AI Tutor hỗ trợ sinh viên ôn tập sau buổi học.
 
 Quy tắc bắt buộc:
@@ -59,16 +60,12 @@ NỘI DUNG BÀI GIẢNG:
 {document_text}"""
 
 
-def _response_kwargs(model: str) -> dict[str, Any]:
-    kwargs: dict[str, Any] = {
+def _chat_kwargs(model: str) -> dict[str, Any]:
+    return {
         "model": model,
-        "max_output_tokens": 5_000,
-        "store": False,
-        "text": {"verbosity": "low"},
+        "max_tokens": 4_000,
+        "temperature": 0.3,
     }
-    if model.startswith(("gpt-5", "o1", "o3", "o4")):
-        kwargs["reasoning"] = {"effort": "low"}
-    return kwargs
 
 
 def generate_study_material(
@@ -78,9 +75,10 @@ def generate_study_material(
     question_types: Sequence[QuestionType] = ("multiple_choice", "short_answer"),
     api_key: str | None = None,
     model: str | None = None,
+    base_url: str | None = None,
     client: Any | None = None,
 ) -> StudyMaterial:
-    """Create summary and quiz in one validated OpenAI Responses API call."""
+    """Create summary and quiz in one validated Chat Completions call."""
 
     if not document_text.strip():
         raise AIGenerationError("Tài liệu chưa có nội dung để AI phân tích.")
@@ -90,23 +88,32 @@ def generate_study_material(
         raise ValueError("At least one question type is required")
 
     selected_model = model or os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
+    selected_base_url = base_url or os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL)
     if client is None:
         resolved_key = api_key or os.getenv("OPENAI_API_KEY")
         if not resolved_key:
             raise MissingAPIKeyError("Hệ thống chưa được cấu hình OPENAI_API_KEY.")
-        client = OpenAI(api_key=resolved_key, timeout=60.0, max_retries=1)
+        client = OpenAI(
+            api_key=resolved_key,
+            base_url=selected_base_url,
+            timeout=60.0,
+            max_retries=1,
+        )
 
     prompt = build_generation_prompt(
         document_text,
         question_count=question_count,
         question_types=question_types,
     )
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
     try:
-        response = client.responses.parse(
-            instructions=SYSTEM_PROMPT,
-            input=prompt,
-            text_format=StudyMaterial,
-            **_response_kwargs(selected_model),
+        response = client.chat.completions.parse(
+            messages=messages,
+            response_format=StudyMaterial,
+            **_chat_kwargs(selected_model),
         )
     except APITimeoutError as exc:
         raise AIGenerationError("AI đang phản hồi chậm. Vui lòng thử lại sau ít phút.") from exc
@@ -119,7 +126,11 @@ def generate_study_material(
     except Exception as exc:
         raise AIGenerationError("Không thể chuẩn hóa kết quả AI. Vui lòng thử tạo lại.") from exc
 
-    material = getattr(response, "output_parsed", None)
+    message = response.choices[0].message
+    material = getattr(message, "parsed", None)
     if material is None:
-        raise AIGenerationError("AI không trả về nội dung có cấu trúc. Vui lòng thử tạo lại.")
+        content = getattr(message, "content", None) or ""
+        if not content.strip():
+            raise AIGenerationError("AI không trả về nội dung. Vui lòng thử tạo lại.")
+        material = StudyMaterial.model_validate_json(content)
     return material

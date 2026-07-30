@@ -154,25 +154,29 @@ def ask_tutor(source_document: str, question: str) -> TutorResponse:
     if not api_key:
         raise RuntimeError("Thiếu OPENAI_API_KEY trong .env")
     document_text = get_document_text(source_document)
-    model = os.getenv("OPENAI_MODEL", "gpt-5.6-sol")
-    client = OpenAI(api_key=api_key, timeout=60, max_retries=1)
-    response = client.responses.parse(
-        model=model,
-        instructions=(
-            "Bạn là AI Tutor chỉ được dùng tài liệu được cung cấp. Chọn đúng một action: "
-            "ANSWER nếu tài liệu đủ thông tin; CLARIFY nếu câu hỏi mơ hồ; ABSTAIN nếu tài liệu "
-            "không có thông tin; REFUSE nếu người dùng yêu cầu làm hộ, tiết lộ bí mật, sửa/xóa dữ liệu "
-            "hoặc hành vi không an toàn. Không dùng kiến thức ngoài tài liệu. Với ABSTAIN hãy nói rõ "
-            "'Tài liệu không cung cấp thông tin này'. Với CLARIFY phải hỏi người dùng muốn hỏi phần nào. "
-            "Trả citations là số trang hỗ trợ câu trả lời; để rỗng nếu không ANSWER."
-        ),
-        input=f"TÀI LIỆU:\n{document_text}\n\nCÂU HỎI:\n{question}",
-        text_format=TutorDecision,
-        max_output_tokens=800,
-        store=False,
-        reasoning={"effort": "low"},
+    model = os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
+    base_url = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=60, max_retries=1)
+    system_prompt = (
+        "Bạn là AI Tutor chỉ được dùng tài liệu được cung cấp. Chọn đúng một action: "
+        "ANSWER nếu tài liệu đủ thông tin; CLARIFY nếu câu hỏi mơ hồ; ABSTAIN nếu tài liệu "
+        "không có thông tin; REFUSE nếu người dùng yêu cầu làm hộ, tiết lộ bí mật, sửa/xóa dữ liệu "
+        "hoặc hành vi không an toàn. Không dùng kiến thức ngoài tài liệu. Với ABSTAIN hãy nói rõ "
+        "'Tài liệu không cung cấp thông tin này'. Với CLARIFY phải hỏi người dùng muốn hỏi phần nào. "
+        "Trả citations là số trang hỗ trợ câu trả lời; để rỗng nếu không ANSWER."
     )
-    parsed = response.output_parsed
+    response = client.chat.completions.parse(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"TÀI LIỆU:\n{document_text}\n\nCÂU HỎI:\n{question}"},
+        ],
+        response_format=TutorDecision,
+        max_tokens=800,
+        temperature=0,
+    )
+    message = response.choices[0].message
+    parsed = getattr(message, "parsed", None)
     if parsed is None:
         raise RuntimeError("Backend không trả response có cấu trúc")
     return TutorResponse(
