@@ -11,7 +11,9 @@ class AppSettings:
 
     environment: str = "development"
     data_dir: Path = Path("var")
-    openai_model: str = "gpt-5.6-sol"
+    # Model id theo định dạng OpenRouter: "<provider>/<model>"
+    # Danh sách model & giá: https://openrouter.ai/models
+    openrouter_model: str = "openai/gpt-4o-mini"
     max_upload_mb: int = 20
     max_input_characters: int = 60_000
 
@@ -20,7 +22,11 @@ class AppSettings:
         return cls(
             environment=os.getenv("APP_ENV", "development"),
             data_dir=Path(os.getenv("DATA_DIR", "var")),
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6-sol"),
+            # Ưu tiên OPENROUTER_MODEL; fallback OPENAI_MODEL để không phá vỡ
+            # .env cũ nếu ai đó chưa kịp đổi tên biến.
+            openrouter_model=os.getenv(
+                "OPENROUTER_MODEL", os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
+            ),
             max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "20")),
             max_input_characters=int(os.getenv("MAX_INPUT_CHARACTERS", "60000")),
         )

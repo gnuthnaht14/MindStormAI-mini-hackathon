@@ -208,10 +208,10 @@ def load_demo() -> None:
 
 
 def get_configured_api_key() -> str | None:
-    if os.getenv("OPENAI_API_KEY"):
-        return os.getenv("OPENAI_API_KEY")
+    if os.getenv("OPENROUTER_API_KEY"):
+        return os.getenv("OPENROUTER_API_KEY")
     try:
-        return st.secrets.get("OPENAI_API_KEY")
+        return st.secrets.get("OPENROUTER_API_KEY")
     except Exception:
         return None
 
@@ -260,7 +260,7 @@ inject_styles()
 init_state()
 
 api_key = get_configured_api_key()
-selected_model = SETTINGS.openai_model
+selected_model = SETTINGS.openrouter_model
 
 with st.sidebar:
     st.markdown(
@@ -369,7 +369,7 @@ with main_col:
                             question_count=question_count,
                             question_types=selected_question_types,
                             api_key=api_key,
-                            model=selected_model.strip() or SETTINGS.openai_model,
+                            model=selected_model.strip() or SETTINGS.openrouter_model,
                         )
                     st.session_state.generation_seconds = time.perf_counter() - started_at
                     st.session_state.is_demo = False
