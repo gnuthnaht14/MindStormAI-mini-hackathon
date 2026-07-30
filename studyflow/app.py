@@ -96,9 +96,6 @@ def inject_styles() -> None:
         .brand strong { font-size:1.2rem; letter-spacing:-.04em; }
         .brand small { display:block; color:#8a91a4; font-size:.66rem; margin-top:.05rem; }
         .side-kicker { color:#8990a2; font-size:.68rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; margin:1.4rem 0 .55rem; }
-        .api-state { display:flex; align-items:center; gap:.5rem; color:#697085; font-size:.76rem; margin:.55rem 0 1rem; }
-        .api-dot { width:7px; height:7px; border-radius:50%; background:#f0a45d; }
-        .api-dot.ready { background:#24bf73; box-shadow:0 0 0 4px rgba(36,191,115,.11); }
 
         .topbar { display:flex; justify-content:space-between; align-items:center; gap:1rem; margin:0 0 1.1rem; }
         .crumb { color:var(--primary); font-size:.9rem; font-weight:700; }
@@ -210,9 +207,7 @@ def load_demo() -> None:
     st.session_state.uploader_nonce += 1
 
 
-def get_configured_api_key(temporary_key: str) -> str | None:
-    if temporary_key.strip():
-        return temporary_key.strip()
+def get_configured_api_key() -> str | None:
     if os.getenv("OPENAI_API_KEY"):
         return os.getenv("OPENAI_API_KEY")
     try:
@@ -264,6 +259,9 @@ def render_question(question: Question, index: int) -> None:
 inject_styles()
 init_state()
 
+api_key = get_configured_api_key()
+selected_model = SETTINGS.openai_model
+
 with st.sidebar:
     st.markdown(
         '<div class="brand"><div class="brand-orb">♙</div><div><strong>studyflow AI</strong><small>SLIDE LEARNING WORKSPACE</small></div></div>',
@@ -272,22 +270,6 @@ with st.sidebar:
     if st.button("＋ New Study Session", type="primary", use_container_width=True):
         clear_document_state(reset_uploader=True)
         st.rerun()
-
-    st.markdown('<div class="side-kicker">AI configuration</div>', unsafe_allow_html=True)
-    temporary_api_key = st.text_input(
-        "OpenAI API key",
-        type="password",
-        placeholder="sk-...",
-        help="Chỉ dùng trong phiên hiện tại, không ghi xuống file.",
-    )
-    api_key = get_configured_api_key(temporary_api_key)
-    api_state_class = "ready" if api_key else ""
-    api_state_text = "OpenAI đã sẵn sàng" if api_key else "Chưa có OPENAI_API_KEY"
-    st.markdown(
-        f'<div class="api-state"><span class="api-dot {api_state_class}"></span>{api_state_text}</div>',
-        unsafe_allow_html=True,
-    )
-    selected_model = st.text_input("Model", value=SETTINGS.openai_model)
 
     st.markdown('<div class="side-kicker">Generate options</div>', unsafe_allow_html=True)
     question_count = st.slider("Số câu hỏi", min_value=5, max_value=10, value=8)
