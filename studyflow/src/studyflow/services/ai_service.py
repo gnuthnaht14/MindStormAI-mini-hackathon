@@ -64,7 +64,7 @@ def _response_kwargs(model: str) -> dict[str, Any]:
         "model": model,
         "max_output_tokens": 5_000,
         "store": False,
-        "verbosity": "low",
+        "text": {"verbosity": "low"},
     }
     if model.startswith(("gpt-5", "o1", "o3", "o4")):
         kwargs["reasoning"] = {"effort": "low"}
