@@ -1,0 +1,71 @@
+{
+  "title": "AI20K Build Phase — Onboarding và cách làm việc",
+  "summary": "Bài giảng trình bày quy trình chuẩn bị để học viên bước vào Build Phase. Người học cần hoàn tất quyền truy cập nền tảng, Discord và GitHub, xác nhận vai trò và nhóm dự án, sau đó chạy được repository trước buổi kickoff. Trong quá trình build, nhóm ưu tiên một happy path ổn định, chia công việc thành issue nhỏ, review qua pull request và báo blocker sớm. Onboarding được xem là hoàn tất khi thành viên vừa có đủ quyền truy cập, vừa hiểu phạm vi MVP và cách phối hợp với đội.",
+  "key_points": [
+    "Hoàn tất đăng nhập nền tảng, Discord và GitHub Organization trước khi bắt đầu sprint.",
+    "Hồ sơ kỹ năng, múi giờ và vai trò giúp chương trình ghép nhóm phù hợp.",
+    "Nhóm phải hiểu problem statement và chốt phạm vi MVP trước khi mở rộng tính năng.",
+    "Repository cần chạy được trên máy của từng thành viên trước buổi kickoff.",
+    "Ưu tiên một happy path ổn định và chia việc thành issue có tiêu chí hoàn thành rõ ràng.",
+    "Không commit API key, dữ liệu nhạy cảm hoặc file .env lên GitHub.",
+    "Blocker kéo dài quá 30 phút cần được báo sớm cho mentor hoặc đồng đội."
+  ],
+  "questions": [
+    {
+      "type": "multiple_choice",
+      "question": "Mục tiêu chính của quy trình onboarding là gì?",
+      "options": ["Chỉ cấp quyền GitHub", "Chuẩn bị cả quyền truy cập và cách phối hợp để sẵn sàng build", "Hoàn thiện toàn bộ sản phẩm", "Đánh giá điểm cuối khóa"],
+      "answer": "Chuẩn bị cả quyền truy cập và cách phối hợp để sẵn sàng build",
+      "explanation": "Onboarding bao gồm quyền truy cập, hiểu problem statement, chạy repository và thống nhất cách làm việc."
+    },
+    {
+      "type": "multiple_choice",
+      "question": "Nhóm nên ưu tiên điều gì trước khi thêm tính năng nâng cao?",
+      "options": ["Một happy path hoạt động ổn định", "Thiết kế microservice", "Tối ưu mọi trường hợp hiếm", "Triển khai mobile app"],
+      "answer": "Một happy path hoạt động ổn định",
+      "explanation": "Tài liệu yêu cầu nhóm hoàn thiện luồng cốt lõi ổn định trước khi mở rộng."
+    },
+    {
+      "type": "true_false",
+      "question": "Học viên có thể commit file .env nếu repository là private.",
+      "options": ["Đúng", "Sai"],
+      "answer": "Sai",
+      "explanation": "Tài liệu cấm commit API key, dữ liệu nhạy cảm và file .env lên GitHub."
+    },
+    {
+      "type": "short_answer",
+      "question": "Khi nào một blocker cần được báo cho mentor hoặc đồng đội?",
+      "options": [],
+      "answer": "Khi blocker kéo dài quá 30 phút.",
+      "explanation": "Báo sớm giúp đội hỗ trợ kịp thời và tránh mất thời gian tự xử lý quá lâu."
+    },
+    {
+      "type": "multiple_choice",
+      "question": "Điều nào là tiêu chí sẵn sàng build?",
+      "options": ["Đã xem video giới thiệu", "Chạy được repository và hiểu phạm vi MVP", "Đã hoàn thành V2", "Có tài khoản mạng xã hội"],
+      "answer": "Chạy được repository và hiểu phạm vi MVP",
+      "explanation": "Đây là hai tiêu chí được nêu trực tiếp trong phần sẵn sàng build."
+    },
+    {
+      "type": "short_answer",
+      "question": "Vì sao cần hoàn thiện hồ sơ kỹ năng, múi giờ và vai trò?",
+      "options": [],
+      "answer": "Để chương trình và nhóm hiểu năng lực, khả năng phối hợp và phân công vai trò phù hợp.",
+      "explanation": "Thông tin hồ sơ hỗ trợ ghép nhóm và tổ chức cộng tác hiệu quả."
+    },
+    {
+      "type": "true_false",
+      "question": "Mỗi công việc nên có người phụ trách và tiêu chí hoàn thành rõ ràng.",
+      "options": ["Đúng", "Sai"],
+      "answer": "Đúng",
+      "explanation": "Đây là nguyên tắc quản lý công việc được nêu trong tài liệu."
+    },
+    {
+      "type": "short_answer",
+      "question": "Pull request đóng vai trò gì trong sprint?",
+      "options": [],
+      "answer": "Pull request tạo điểm kiểm tra để đồng đội review thay đổi trước khi hợp nhất.",
+      "explanation": "Tài liệu yêu cầu mở pull request để review và ghi lại các quyết định kỹ thuật quan trọng."
+    }
+  ]
+}

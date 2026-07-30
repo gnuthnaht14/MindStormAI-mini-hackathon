@@ -1,0 +1,6 @@
+# MVP stack from plan.md
+streamlit>=1.60.0
+openai>=2.0.0
+pymupdf>=1.25.0
+pydantic>=2.10.0
+python-dotenv>=1.0.0
