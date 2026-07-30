@@ -72,7 +72,14 @@ def inject_styles() -> None:
         html, body, [class*="css"] { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .stApp { background: var(--canvas); color: var(--ink); }
         [data-testid="stHeader"] { background: transparent; }
-        [data-testid="stToolbar"] { display: none; }
+        /* Keep Streamlit's sidebar controls visible. Hiding the whole toolbar
+           also removes the only way to reopen a collapsed sidebar. */
+        [data-testid="stToolbar"] { display: flex; }
+        [data-testid="stSidebarCollapsedControl"] {
+            display: block !important;
+            visibility: visible !important;
+            z-index: 1000000;
+        }
         .block-container { max-width: 1500px; padding: 1.35rem 1.6rem 3rem; }
 
         [data-testid="stSidebar"] { background: #fff; border-right: 1px solid var(--line); }
