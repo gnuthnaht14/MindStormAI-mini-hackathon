@@ -125,17 +125,16 @@ Hai case fail là EVAL-014 và EVAL-016: action đều đúng `CLARIFY`, nhưng 
 
 | Hạng mục | Owner | Deliverable |
 |---|---|---|
-| Spec + product decision | Nhữ Trọng Thành | `spec.md`, quyết định scope/quality bar |
-| Evidence + eval | Nhữ Trọng Thành | `evidence/`, `studyflow/eval/` |
-| Prompt + schema | Nhữ Trọng Thành | `ai_service.py`, Pydantic models |
-| Code + test | Nhữ Trọng Thành | Streamlit app, services, unit tests |
-| Demo | Nhữ Trọng Thành | PDF mẫu, output backup, demo flow |
+| Spec + product decision | Cả nhóm | `spec.md`, quyết định scope/quality bar |
+| Evidence + eval | Nhữ Trọng Thành, Lương Thị Hảo | `evidence/`, `studyflow/eval/` |
+| Prompt + schema | Nhữ Trọng Thành, Mai Hoàng Sơn | `ai_service.py`, Pydantic models |
+| Code + test | Nhữ Trọng Thành, Vũ Huyền, Mai Hoàng Sơn | Streamlit app, services, unit tests |
+| Demo, Canvas, Slide | Lê Thị Linh, Vũ Huyền | PDF mẫu, output backup, demo flow |
 
 ### Willing users và validation CP5
 
 - **Nhữ Trọng Thành:** đã dùng prototype; tiếp tục vòng correction.
-- **WU-02 — cần team điền tên người đã đồng ý test trước CP5.**
-- **WU-03 — cần team điền tên người đã đồng ý test trước CP5.**
+- sẽ update sau
 
 Khảo sát có 51 người trả lời nhưng báo cáo tổng hợp không chứa tên, nên chưa được dùng để tự điền willing users. Ưu tiên mời 3 người trong nhóm 31/51 đã chấm mức quan tâm 4–5 và ghi tên sau khi họ đồng ý test.
 
