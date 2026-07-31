@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 QuestionType = Literal["multiple_choice", "true_false", "short_answer"]
+PageVisualType = Literal["text", "scanned", "mixed_visual", "diagram_or_chart"]
+PageAnalysisMethod = Literal["text", "ocr", "vision", "text+vision", "ocr+vision"]
 
 
 def _normalize_source_pages(pages: list[int]) -> list[int]:
@@ -14,15 +16,49 @@ def _normalize_source_pages(pages: list[int]) -> list[int]:
     return sorted(set(pages))
 
 
+class PageContent(BaseModel):
+    """Content and extraction metadata kept at page granularity."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    page_number: int = Field(ge=1)
+    text_layer: str = ""
+    ocr_text: str = ""
+    visual_summary: str = ""
+    visual_facts: list[str] = Field(default_factory=list)
+    visual_type: PageVisualType = "text"
+    image_count: int = Field(default=0, ge=0)
+    drawing_count: int = Field(default=0, ge=0)
+    image_coverage: float = Field(default=0.0, ge=0.0, le=1.0)
+    analysis_method: PageAnalysisMethod = "text"
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class PageVisualAnalysis(BaseModel):
+    """Structured result returned by the vision model for one rendered page."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    visual_summary: str = Field(min_length=8, max_length=1_500)
+    visible_text: str = Field(default="", max_length=3_000)
+    important_facts: list[str] = Field(default_factory=list, max_length=12)
+    confidence: Literal["low", "medium", "high"] = "medium"
+
+
 class PDFExtraction(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     filename: str
     text: str
     page_count: int = Field(ge=1)
-    character_count: int = Field(ge=1)
-    processed_characters: int = Field(ge=1)
+    character_count: int = Field(ge=0)
+    processed_characters: int = Field(ge=0)
     page_texts: list[str] = Field(default_factory=list)
+    page_contents: list[PageContent] = Field(default_factory=list)
+    visual_candidate_pages: list[int] = Field(default_factory=list)
+    ocr_page_count: int = Field(default=0, ge=0)
+    vision_page_count: int = Field(default=0, ge=0)
+    visual_warnings: list[str] = Field(default_factory=list)
     was_truncated: bool = False
 
 

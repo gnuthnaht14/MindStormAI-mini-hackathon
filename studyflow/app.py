@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from collections.abc import Sequence
+from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -30,12 +31,15 @@ from studyflow.services import (  # noqa: E402
     MissingAPIKeyError,
     PDFExtractionError,
     PDFValidationError,
+    VisualAnalysisError,
     build_summary_markdown,
     calculate_quiz_score,
+    enrich_pdf_visuals,
     extract_pdf_text,
     generate_quiz,
     generate_summary,
     is_correct_answer,
+    render_pdf_page_preview,
     validate_pdf,
 )
 
@@ -56,7 +60,7 @@ QUESTION_TYPE_LABELS = {
     "true_false": "Đúng / Sai",
     "short_answer": "Tự luận ngắn",
 }
-SESSION_SCHEMA_VERSION = 5
+SESSION_SCHEMA_VERSION = 6
 
 
 st.set_page_config(
@@ -161,6 +165,46 @@ def inject_styles() -> None:
             padding:.18rem 0;
         }
 
+        [data-baseweb="tab-panel"]:has(.summary-tab-marker) > div > [data-testid="stVerticalBlock"] {
+            gap:.65rem;
+        }
+        [data-baseweb="tab-panel"]:has(.summary-tab-marker) h2 {
+            margin-top:.55rem; margin-bottom:.2rem;
+        }
+        [data-baseweb="tab-panel"]:has(.summary-tab-marker) h3 {
+            margin-top:.15rem; margin-bottom:.15rem;
+        }
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.summary-card-marker) {
+            padding:.75rem 1rem; border-radius:12px; background:#fff;
+        }
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.summary-card-marker) [data-testid="stVerticalBlock"] {
+            gap:.3rem;
+        }
+        [data-testid="stMarkdownContainer"]:has(.summary-card-marker) { display:none; }
+        [class*="st-key-citation_inline_"] {
+            gap:.12rem !important; align-items:baseline !important; flex-wrap:wrap;
+            margin:.05rem 0 .25rem;
+        }
+        [class*="st-key-citation_inline_"] [data-testid="stMarkdownContainer"] p {
+            display:inline; margin:0;
+        }
+        .inline-citation-text { line-height:1.55; }
+        .inline-citation-text strong { font-weight:750; }
+        .inline-citation-text.summary-overview-text {
+            display:inline-block; padding:.6rem .75rem; border-radius:10px; background:#eef1ff;
+        }
+        .inline-citation-text.summary-warning-text {
+            display:inline-block; padding:.6rem .75rem; border-radius:10px;
+            background:#fff8dd; color:#8a6500;
+        }
+        [class*="st-key-citation_inline_"] .stButton > button[kind="tertiary"] {
+            min-height:1.35rem; height:1.35rem; padding:0 .12rem; border-radius:4px;
+            color:var(--primary); background:transparent; font-size:.78rem; font-weight:800;
+        }
+        [class*="st-key-citation_inline_"] .stButton > button[kind="tertiary"]:hover {
+            color:var(--primary-dark); background:#e8e9ff;
+        }
+
         [data-testid="stColumn"]:has(.tutor-panel) {
             position:sticky !important; top:.75rem; align-self:flex-start;
             height:fit-content; z-index:20;
@@ -203,6 +247,8 @@ def init_state() -> None:
                 "uploader_nonce",
                 "document_hash",
                 "extraction",
+                "ai_extraction",
+                "pdf_bytes",
                 "material",
                 "summary_material",
                 "quiz_material",
@@ -221,6 +267,8 @@ def init_state() -> None:
         "uploader_nonce": 0,
         "document_hash": None,
         "extraction": None,
+        "ai_extraction": None,
+        "pdf_bytes": None,
         "summary_material": None,
         "quiz_material": None,
         "processing_error": None,
@@ -244,6 +292,8 @@ def clear_document_state(*, reset_uploader: bool = False) -> None:
     for key in (
         "document_hash",
         "extraction",
+        "ai_extraction",
+        "pdf_bytes",
         "summary_material",
         "quiz_material",
         "processing_error",
@@ -266,7 +316,7 @@ def load_demo() -> None:
     summary = SummaryMaterial.model_validate(material.model_dump(exclude={"questions"}))
     quiz = QuizMaterial(questions=material.questions)
     st.session_state.document_hash = "demo"
-    st.session_state.extraction = PDFExtraction(
+    extraction = PDFExtraction(
         filename="AI20K-Build-Phase-Onboarding-demo.pdf",
         text=demo_text,
         page_count=len(sections),
@@ -275,6 +325,9 @@ def load_demo() -> None:
         page_texts=sections,
         was_truncated=False,
     )
+    st.session_state.extraction = extraction
+    st.session_state.ai_extraction = extraction
+    st.session_state.pdf_bytes = None
     st.session_state.summary_material = summary
     st.session_state.quiz_material = quiz
     st.session_state.processing_error = None
@@ -298,6 +351,37 @@ def get_configured_api_key() -> str | None:
         return st.secrets.get("OPENAI_API_KEY")
     except Exception:
         return None
+
+
+def prepare_ai_extraction(extraction: PDFExtraction, api_key: str | None) -> PDFExtraction:
+    """Prepare one shared visual context for both independent AI flows."""
+
+    cached = st.session_state.ai_extraction
+    if cached is not None:
+        return cached
+    if not SETTINGS.enable_vision or not extraction.visual_candidate_pages:
+        if extraction.character_count < 40:
+            raise VisualAnalysisError(
+                "PDF chủ yếu là hình ảnh. Hãy bật ENABLE_VISION hoặc cài Tesseract OCR để đọc nội dung."
+            )
+        st.session_state.ai_extraction = extraction
+        return extraction
+
+    file_bytes = st.session_state.pdf_bytes
+    if not file_bytes:
+        raise VisualAnalysisError("Không còn dữ liệu PDF để phân tích hình ảnh. Vui lòng upload lại file.")
+    enriched = enrich_pdf_visuals(
+        file_bytes,
+        extraction,
+        api_key=api_key,
+        model=SETTINGS.openai_vision_model,
+        cache_dir=ROOT / SETTINGS.data_dir / "visual_cache",
+        max_pages=SETTINGS.max_vision_pages,
+        detail=SETTINGS.vision_image_detail,
+        max_characters=SETTINGS.max_input_characters,
+    )
+    st.session_state.ai_extraction = enriched
+    return enriched
 
 
 def render_empty(title: str, message: str, icon: str = "✦") -> None:
@@ -325,11 +409,86 @@ def source_label(source_pages: Sequence[int]) -> str:
     return f"Nguồn: trang {pages}"
 
 
-def render_cited_points(items: Sequence[CitedPoint], *, numbered: bool = False) -> None:
+@st.cache_data(show_spinner=False)
+def get_source_page_image(file_bytes: bytes, page_number: int) -> bytes:
+    return render_pdf_page_preview(file_bytes, page_number)
+
+
+@st.dialog("Trang slide nguồn", width="large")
+def show_source_page(page_number: int) -> None:
+    extraction: PDFExtraction | None = st.session_state.extraction
+    if extraction is None:
+        st.error("Không còn tài liệu nguồn trong phiên làm việc.")
+        return
+
+    st.caption(f"{extraction.filename} · Trang {page_number}/{extraction.page_count}")
+    file_bytes = st.session_state.pdf_bytes
+    if file_bytes:
+        try:
+            st.image(
+                get_source_page_image(file_bytes, page_number),
+                caption=f"Trang {page_number}",
+                use_container_width=True,
+            )
+        except PDFExtractionError as exc:
+            st.error(str(exc))
+        return
+
+    if 1 <= page_number <= len(extraction.page_texts):
+        st.info("Dữ liệu demo không chứa PDF gốc; đang hiển thị nội dung trang đã trích xuất.")
+        st.text(extraction.page_texts[page_number - 1] or "Trang không có text layer.")
+    else:
+        st.error(f"Trang nguồn {page_number} không tồn tại.")
+
+
+def render_inline_citation(
+    text: str,
+    source_pages: Sequence[int],
+    *,
+    namespace: str,
+    variant: str = "default",
+    lead: str | None = None,
+) -> None:
+    variant_class = {
+        "overview": "summary-overview-text",
+        "warning": "summary-warning-text",
+    }.get(variant, "")
+    safe_text = escape(text).replace("\n", "<br>")
+    safe_lead = f"<strong>{escape(lead)}</strong> " if lead else ""
+    with st.container(
+        key=f"citation_inline_{namespace}",
+        horizontal=True,
+        vertical_alignment="center",
+        gap="small",
+    ):
+        st.markdown(
+            f'<span class="inline-citation-text {variant_class}">{safe_lead}{safe_text}</span>',
+            unsafe_allow_html=True,
+            width="content",
+        )
+        for page in source_pages:
+            if st.button(
+                f"[{page}]",
+                key=f"citation_{namespace}_{page}",
+                type="tertiary",
+                help=f"Mở slide nguồn trang {page}",
+            ):
+                show_source_page(page)
+
+
+def render_cited_points(
+    items: Sequence[CitedPoint],
+    *,
+    namespace: str,
+    numbered: bool = False,
+) -> None:
     for index, item in enumerate(items, start=1):
-        prefix = f"**{index}.** " if numbered else "- "
-        st.markdown(f"{prefix}{item.text}")
-        st.caption(source_label(item.source_pages))
+        render_inline_citation(
+            item.text,
+            item.source_pages,
+            namespace=f"{namespace}_{index}",
+            lead=f"{index}." if numbered else "•",
+        )
 
 
 def lock_quiz_answer(choice_key: str, result_key: str, question: Question) -> None:
@@ -417,7 +576,7 @@ st.markdown(
     <section class="hero-card">
         <div class="eyebrow">From slides to active learning</div>
         <h1>Biến slide thành tài liệu ôn tập theo nhu cầu.</h1>
-        <p>Upload PDF có text layer, sau đó chọn tạo Summary hoặc Quiz độc lập để tiết kiệm thời gian và chi phí AI.</p>
+        <p>Upload PDF, sau đó chọn tạo Summary hoặc Quiz độc lập. Trang nhiều hình ảnh chỉ gọi Vision khi thật sự cần.</p>
     </section>
     """,
     unsafe_allow_html=True,
@@ -431,7 +590,7 @@ with main_col:
             "Upload slide bài giảng",
             type=["pdf"],
             key=f"pdf_upload_{st.session_state.uploader_nonce}",
-            help=f"Tối đa {SETTINGS.max_upload_mb} MB, PDF cần có text layer.",
+            help=f"Tối đa {SETTINGS.max_upload_mb} MB. Hỗ trợ cả PDF có text layer và slide dạng ảnh.",
         )
 
         if uploaded_file is not None:
@@ -451,9 +610,12 @@ with main_col:
                             file_bytes,
                             filename=uploaded_file.name,
                             max_characters=SETTINGS.max_input_characters,
+                            enable_local_ocr=SETTINGS.enable_local_ocr,
+                            ocr_languages=SETTINGS.ocr_languages,
                         )
                     st.session_state.document_hash = document_hash
                     st.session_state.extraction = extraction
+                    st.session_state.pdf_bytes = file_bytes
                 except (PDFValidationError, PDFExtractionError) as exc:
                     st.session_state.document_hash = document_hash
                     st.session_state.processing_error = str(exc)
@@ -464,7 +626,21 @@ with main_col:
         elif extraction is not None:
             st.success(f"Đã đọc xong {extraction.filename}", icon="✅")
             render_metrics(extraction)
-            if extraction.was_truncated:
+            if extraction.visual_candidate_pages:
+                st.info(
+                    f"Phát hiện {len(extraction.visual_candidate_pages)} trang có nội dung hình ảnh. "
+                    "Kết quả Vision sẽ được cache và dùng chung cho Summary/Quiz.",
+                    icon="🖼️",
+                )
+            prepared_extraction = st.session_state.ai_extraction
+            if prepared_extraction is not None:
+                if prepared_extraction.vision_page_count:
+                    st.success(
+                        f"Đã phân tích hình ảnh trên tất cả các trang; "
+                    )
+                for warning in prepared_extraction.visual_warnings:
+                    st.warning(warning)
+            if (prepared_extraction or extraction).was_truncated:
                 st.warning("Tài liệu dài; MVP chỉ gửi phần nội dung đầu đến AI.")
 
             selected_question_types = [QUESTION_TYPE_OPTIONS[label] for label in selected_type_labels]
@@ -474,16 +650,17 @@ with main_col:
                 if st.button(f"✦ {summary_label}", type="primary", use_container_width=True):
                     started_at = time.perf_counter()
                     try:
-                        with st.spinner("AI đang tạo bản tóm tắt…"):
+                        with st.spinner("Đang đọc trang hình ảnh và tạo bản tóm tắt…"):
+                            ai_extraction = prepare_ai_extraction(extraction, api_key)
                             st.session_state.summary_material = generate_summary(
-                                extraction.text,
+                                ai_extraction.text,
                                 api_key=api_key,
                                 model=selected_model.strip() or "gpt-5.6-sol",
                             )
                         st.session_state.summary_generation_seconds = time.perf_counter() - started_at
                         st.session_state.summary_is_demo = False
                         st.rerun()
-                    except (MissingAPIKeyError, AIGenerationError, ValueError) as exc:
+                    except (MissingAPIKeyError, AIGenerationError, VisualAnalysisError, ValueError) as exc:
                         st.error(str(exc), icon="⚠️")
             with quiz_action_col:
                 quiz_label = "Tạo lại Quiz" if st.session_state.quiz_material else "Tạo AI Quiz"
@@ -494,9 +671,10 @@ with main_col:
                 ):
                     started_at = time.perf_counter()
                     try:
-                        with st.spinner("AI đang tạo bộ câu hỏi…"):
+                        with st.spinner("Đang đọc trang hình ảnh và tạo bộ câu hỏi…"):
+                            ai_extraction = prepare_ai_extraction(extraction, api_key)
                             new_quiz = generate_quiz(
-                                extraction.text,
+                                ai_extraction.text,
                                 question_count=question_count,
                                 question_types=selected_question_types,
                                 api_key=api_key,
@@ -507,7 +685,7 @@ with main_col:
                         st.session_state.quiz_generation_seconds = time.perf_counter() - started_at
                         st.session_state.quiz_is_demo = False
                         st.rerun()
-                    except (MissingAPIKeyError, AIGenerationError, ValueError) as exc:
+                    except (MissingAPIKeyError, AIGenerationError, VisualAnalysisError, ValueError) as exc:
                         st.error(str(exc), icon="⚠️")
 
     summary_material: SummaryMaterial | None = st.session_state.summary_material
@@ -521,15 +699,24 @@ with main_col:
             render_empty("Chưa có tài liệu", "Upload một PDF để xem nội dung được trích xuất theo từng trang.", "▤")
         else:
             st.subheader(extraction.filename)
-            st.caption("Preview text layer được PyMuPDF trích xuất")
-            for page_index, page_text in enumerate(extraction.page_texts, start=1):
+            display_extraction = st.session_state.ai_extraction or extraction
+            st.caption("Preview nội dung theo trang từ text layer, OCR và Vision")
+            for page_index, page_text in enumerate(display_extraction.page_texts, start=1):
                 with st.expander(f"Trang {page_index}", expanded=page_index == 1):
                     st.text(page_text or "Trang này không có text layer.")
+                    if display_extraction.page_contents:
+                        page = display_extraction.page_contents[page_index - 1]
+                        st.caption(
+                            f"Phương pháp: {page.analysis_method} · Loại trang: {page.visual_type}"
+                        )
+                        if page.visual_summary:
+                            st.info(page.visual_summary)
 
     with summary_tab:
         if summary_material is None:
             render_empty("Chưa có bản tóm tắt", "Đọc PDF và nhấn “Tạo AI Summary” để bắt đầu.")
         else:
+            st.markdown('<span class="summary-tab-marker"></span>', unsafe_allow_html=True)
             demo_label = " · output demo" if st.session_state.summary_is_demo else ""
             elapsed = st.session_state.summary_generation_seconds
             timing = f" · {elapsed:.1f}s" if elapsed is not None else ""
@@ -537,33 +724,61 @@ with main_col:
             st.header(summary_material.title)
 
             st.subheader("Tổng quan 30 giây")
-            st.info(summary_material.overview.text)
-            st.caption(source_label(summary_material.overview.source_pages))
+            render_inline_citation(
+                summary_material.overview.text,
+                summary_material.overview.source_pages,
+                namespace="summary_overview",
+                variant="overview",
+            )
 
             st.subheader("Sau bài này, bạn cần nắm được")
-            render_cited_points(summary_material.learning_objectives)
+            render_cited_points(
+                summary_material.learning_objectives,
+                namespace="summary_objective",
+            )
 
             st.subheader("Khái niệm trọng tâm")
-            for concept in summary_material.key_concepts:
+            for concept_index, concept in enumerate(summary_material.key_concepts, start=1):
                 with st.container(border=True):
+                    st.markdown('<span class="summary-card-marker"></span>', unsafe_allow_html=True)
                     st.markdown(f"### {concept.name}")
-                    st.markdown(concept.simple_explanation)
                     if concept.example:
-                        st.markdown(f"**Ví dụ trong tài liệu:** {concept.example}")
-                    st.caption(source_label(concept.source_pages))
+                        st.markdown(concept.simple_explanation)
+                        citation_text = concept.example
+                        citation_lead = "Ví dụ trong tài liệu:"
+                    else:
+                        citation_text = concept.simple_explanation
+                        citation_lead = None
+                    render_inline_citation(
+                        citation_text,
+                        concept.source_pages,
+                        namespace=f"summary_concept_{concept_index}",
+                        lead=citation_lead,
+                    )
 
             if summary_material.process_steps:
                 st.subheader("Quy trình từng bước")
-                render_cited_points(summary_material.process_steps, numbered=True)
+                render_cited_points(
+                    summary_material.process_steps,
+                    namespace="summary_process",
+                    numbered=True,
+                )
 
             if summary_material.common_misconceptions:
                 st.subheader("Điểm dễ nhầm")
-                for item in summary_material.common_misconceptions:
-                    st.warning(item.text)
-                    st.caption(source_label(item.source_pages))
+                for misconception_index, item in enumerate(
+                    summary_material.common_misconceptions,
+                    start=1,
+                ):
+                    render_inline_citation(
+                        item.text,
+                        item.source_pages,
+                        namespace=f"summary_misconception_{misconception_index}",
+                        variant="warning",
+                    )
 
             st.subheader("Điều cần nhớ")
-            render_cited_points(summary_material.takeaways)
+            render_cited_points(summary_material.takeaways, namespace="summary_takeaway")
 
             markdown_export = build_summary_markdown(summary_material, extraction)
             download_col, copy_col = st.columns(2)
@@ -627,7 +842,7 @@ with tutor_col:
             <h3>Study pipeline</h3>
             <p>StudyFlow biến nội dung thụ động thành một gói ôn tập có cấu trúc.</p>
             <div class="pipeline-step"><span class="step-dot {'done' if extraction_ready else ''}">1</span>Upload PDF bài giảng</div>
-            <div class="pipeline-step"><span class="step-dot {'done' if extraction_ready else ''}">2</span>Extract text theo trang</div>
+            <div class="pipeline-step"><span class="step-dot {'done' if extraction_ready else ''}">2</span>Đọc text/OCR theo trang</div>
             <div class="pipeline-step"><span class="step-dot {'done' if summary_ready else ''}">3</span>AI Summary (tùy chọn)</div>
             <div class="pipeline-step"><span class="step-dot {'done' if quiz_ready else ''}">4</span>AI Quiz (tùy chọn)</div>
             <div class="pipeline-step"><span class="step-dot">5</span>Ôn tập và tải kết quả</div>

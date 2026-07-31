@@ -99,11 +99,28 @@ class AIServiceTests(unittest.TestCase):
         self.assertIs(client.responses.kwargs["text_format"], QuizMaterial)
         self.assertIn("Không tạo summary", client.responses.kwargs["input"])
 
-    def test_summary_rejects_nonexistent_page_citation(self) -> None:
+    def test_summary_repairs_nonexistent_page_citation_without_second_api_call(self) -> None:
         summary = summary_fixture().model_copy(deep=True)
-        summary.overview.source_pages = [2]
-        with self.assertRaisesRegex(AIGenerationError, "trang không tồn tại"):
-            generate_summary("--- Trang 1 ---\nNội dung.", client=FakeClient(summary))
+        summary.overview.text = "Attention giúp xác định từ quan trọng trong ngữ cảnh bài học."
+        summary.overview.source_pages = [2384]
+        client = FakeClient(summary)
+        result = generate_summary(
+            "--- Trang 1 ---\nToken chia văn bản thành các đơn vị nhỏ.\n\n"
+            "--- Trang 2 ---\nAttention xác định từ quan trọng theo ngữ cảnh bài học.",
+            client=client,
+        )
+        self.assertEqual(result.overview.source_pages, [2])
+        self.assertEqual(client.responses.call_count, 1)
+
+    def test_summary_prompt_lists_only_valid_source_pages(self) -> None:
+        client = FakeClient(summary_fixture())
+        generate_summary(
+            "--- Trang 1 ---\nNội dung đầu.\n\n--- Trang 3 ---\nNội dung cuối.",
+            client=client,
+        )
+        prompt = client.responses.kwargs["input"]
+        self.assertIn("danh sách: [1, 3]", prompt)
+        self.assertIn("Không dùng năm, số liệu", prompt)
 
     def test_quiz_rejects_question_type_outside_request(self) -> None:
         with self.assertRaisesRegex(AIGenerationError, "dạng câu hỏi không được yêu cầu"):

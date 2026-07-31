@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from math import sqrt
 from typing import Any, Sequence, TypeVar
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, RateLimitError
@@ -13,7 +14,16 @@ from studyflow.services.quiz_service import is_correct_answer
 
 DEFAULT_MODEL = "gpt-5.6-sol"
 PAGE_LABEL_PATTERN = re.compile(r"--- Trang (\d+) ---")
+PAGE_SECTION_PATTERN = re.compile(
+    r"--- Trang (\d+) ---\s*(.*?)(?=\n\s*--- Trang \d+ ---|\Z)",
+    re.DOTALL,
+)
 StructuredResult = TypeVar("StructuredResult", bound=BaseModel)
+
+VIETNAMESE_STOP_WORDS = {
+    "các", "có", "của", "cho", "được", "giữa", "khi", "là", "một", "những",
+    "này", "theo", "trong", "trên", "từ", "và", "với", "về", "để",
+}
 
 COMMON_RULES = """Quy tắc bắt buộc:
 1. Chỉ sử dụng thông tin trong nội dung bài giảng được cung cấp.
@@ -50,6 +60,19 @@ def _type_instructions(question_types: Sequence[QuestionType]) -> str:
     return ", ".join(labels[item] for item in question_types)
 
 
+def _available_pages(document_text: str) -> set[int]:
+    return {int(value) for value in PAGE_LABEL_PATTERN.findall(document_text)}
+
+
+def _valid_pages_instruction(document_text: str) -> str:
+    pages = sorted(_available_pages(document_text))
+    page_list = ", ".join(str(page) for page in pages)
+    return (
+        f"source_pages chỉ được chứa số trang trong danh sách: [{page_list}]. "
+        "Không dùng năm, số liệu, token, phiên bản hoặc số thứ tự trong nội dung làm số trang."
+    )
+
+
 def build_summary_prompt(document_text: str) -> str:
     return f"""Hãy tạo Summary V2 dễ hiểu và có dẫn nguồn theo trang từ bài giảng dưới đây.
 
@@ -63,6 +86,7 @@ Yêu cầu:
 - common_misconceptions: điểm dễ nhầm có căn cứ trực tiếp; nếu không đủ căn cứ thì trả list rỗng.
 - takeaways: 3–6 điều quan trọng nhất cần nhớ.
 - Mọi thành phần phải có source_pages chính xác.
+- {_valid_pages_instruction(document_text)}
 - Không tạo câu hỏi hoặc quiz trong response này.
 
 NỘI DUNG BÀI GIẢNG:
@@ -84,6 +108,7 @@ Yêu cầu:
 - Với câu đúng/sai, options phải là [\"Đúng\", \"Sai\"].
 - answer phải khớp nguyên văn một phần tử trong options.
 - Mỗi câu hỏi, đáp án và giải thích phải bám sát tài liệu và có source_pages.
+- {_valid_pages_instruction(document_text)}
 - Không tạo summary, mục tiêu học tập hoặc key concepts trong response này.
 
 NỘI DUNG BÀI GIẢNG:
@@ -163,6 +188,7 @@ def generate_summary(
         text_format=SummaryMaterial,
         max_output_tokens=3_500,
     )
+    _repair_summary_citations(summary, document_text)
     _validate_summary_citations(summary, document_text)
     return summary
 
@@ -199,12 +225,93 @@ def generate_quiz(
         text_format=QuizMaterial,
         max_output_tokens=3_000,
     )
+    _repair_quiz_citations(quiz, document_text)
     _validate_quiz(quiz, document_text, question_count, question_types)
     return quiz
 
 
-def _available_pages(document_text: str) -> set[int]:
-    return {int(value) for value in PAGE_LABEL_PATTERN.findall(document_text)}
+def _page_sections(document_text: str) -> dict[int, str]:
+    return {
+        int(page_number): content.strip()
+        for page_number, content in PAGE_SECTION_PATTERN.findall(document_text)
+    }
+
+
+def _content_tokens(text: str) -> set[str]:
+    tokens = set(re.findall(r"[^\W\d_]{3,}", text.casefold(), flags=re.UNICODE))
+    return tokens - VIETNAMESE_STOP_WORDS
+
+
+def _best_matching_page(query: str, document_text: str) -> int | None:
+    sections = _page_sections(document_text)
+    if not sections:
+        return None
+    query_tokens = _content_tokens(query)
+    if not query_tokens:
+        return min(sections)
+
+    def score(item: tuple[int, str]) -> tuple[float, int]:
+        page_number, page_text = item
+        page_tokens = _content_tokens(page_text)
+        overlap = len(query_tokens & page_tokens)
+        normalized_score = overlap / sqrt(max(len(query_tokens), 1))
+        return normalized_score, -page_number
+
+    return max(sections.items(), key=score)[0]
+
+
+def _repair_source_pages(
+    cited_pages: Sequence[int],
+    *,
+    query: str,
+    document_text: str,
+) -> list[int]:
+    available_pages = _available_pages(document_text)
+    if not available_pages:
+        return sorted(set(cited_pages))
+    valid_pages = sorted(set(cited_pages) & available_pages)
+    if valid_pages:
+        return valid_pages
+    matched_page = _best_matching_page(query, document_text)
+    return [matched_page if matched_page is not None else min(available_pages)]
+
+
+def _repair_summary_citations(summary: SummaryMaterial, document_text: str) -> None:
+    summary.overview.source_pages = _repair_source_pages(
+        summary.overview.source_pages,
+        query=summary.overview.text,
+        document_text=document_text,
+    )
+    for item in [
+        *summary.learning_objectives,
+        *summary.process_steps,
+        *summary.common_misconceptions,
+        *summary.takeaways,
+    ]:
+        item.source_pages = _repair_source_pages(
+            item.source_pages,
+            query=item.text,
+            document_text=document_text,
+        )
+    for concept in summary.key_concepts:
+        query = " ".join(
+            part for part in [concept.name, concept.simple_explanation, concept.example] if part
+        )
+        concept.source_pages = _repair_source_pages(
+            concept.source_pages,
+            query=query,
+            document_text=document_text,
+        )
+
+
+def _repair_quiz_citations(quiz: QuizMaterial, document_text: str) -> None:
+    for question in quiz.questions:
+        query = " ".join([question.question, question.answer, question.explanation])
+        question.source_pages = _repair_source_pages(
+            question.source_pages,
+            query=query,
+            document_text=document_text,
+        )
 
 
 def _validate_pages(cited_pages: Sequence[int], document_text: str) -> None:

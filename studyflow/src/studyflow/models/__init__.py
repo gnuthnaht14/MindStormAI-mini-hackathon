@@ -3,6 +3,8 @@
 from .schemas import (
     CitedPoint,
     KeyConcept,
+    PageContent,
+    PageVisualAnalysis,
     PDFExtraction,
     Question,
     QuestionType,
@@ -14,6 +16,8 @@ from .schemas import (
 __all__ = [
     "CitedPoint",
     "KeyConcept",
+    "PageContent",
+    "PageVisualAnalysis",
     "PDFExtraction",
     "Question",
     "QuestionType",
