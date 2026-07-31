@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from pathlib import Path
 
 import pymupdf
@@ -11,6 +12,20 @@ from studyflow.models import PDFExtraction
 DEFAULT_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 DEFAULT_MAX_INPUT_CHARACTERS = 60_000
 MIN_EXTRACTED_CHARACTERS = 40
+
+_PAGE_NUMBER_RE = re.compile(r"^\d{1,3}$")
+_NOISE_LINE_RE = re.compile(r"^[\s•·▪◦・\-*=]+$")
+_BOILERPLATE_KEYWORDS = (
+    "thank you",
+    "cảm ơn",
+    "q&a",
+    "questions?",
+    "hỏi đáp",
+    "kết thúc",
+    "the end",
+)
+_BOILERPLATE_MAX_BODY = 20
+_HEADER_REPEAT_THRESHOLD = 0.6
 
 
 class PDFValidationError(ValueError):
@@ -55,6 +70,56 @@ def _clean_page_text(text: str) -> str:
     return "\n".join(lines)
 
 
+def _normalize_header_line(line: str) -> str:
+    """Collapse runs of digits so page-varying headers share one template."""
+    return re.sub(r"\d+", "{N}", line.strip())
+
+
+def _detect_repeated_header(page_texts: list[str]) -> str | None:
+    """Return the header template repeated across at least the threshold of pages."""
+    first_lines: list[str] = []
+    for page_text in page_texts:
+        if not page_text:
+            continue
+        first_line = page_text.split("\n", 1)[0].strip()
+        if first_line:
+            first_lines.append(_normalize_header_line(first_line))
+    if len(first_lines) < 2:
+        return None
+    template, count = Counter(first_lines).most_common(1)[0]
+    if count < 2 or count / len(first_lines) < _HEADER_REPEAT_THRESHOLD:
+        return None
+    return template
+
+
+def _is_boilerplate_page(body: str) -> bool:
+    """True when a page carries only a closing/boilerplate marker."""
+    stripped = body.strip()
+    if not stripped:
+        return True
+    if len(stripped) < _BOILERPLATE_MAX_BODY:
+        lowered = stripped.lower()
+        if any(keyword in lowered for keyword in _BOILERPLATE_KEYWORDS):
+            return True
+    return False
+
+
+def _filter_page_for_ai(page_text: str, header_template: str | None) -> str:
+    """Drop per-page noise (header, page number, divider lines) before sending to AI."""
+    lines = page_text.split("\n") if page_text else []
+    start = 0
+    if header_template and lines and _normalize_header_line(lines[0]) == header_template:
+        start = 1
+    kept: list[str] = []
+    for line in lines[start:]:
+        if _PAGE_NUMBER_RE.match(line):
+            continue
+        if _NOISE_LINE_RE.match(line):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def extract_pdf_text(
     file_bytes: bytes,
     *,
@@ -93,7 +158,19 @@ def extract_pdf_text(
                 "Không trích xuất được đủ chữ. PDF có thể là slide dạng ảnh; bản MVP chưa hỗ trợ OCR."
             )
 
-        processed_text = full_text[:max_characters]
+        header_template = _detect_repeated_header(page_texts)
+        ai_pages: list[str] = []
+        for index, page_text in enumerate(page_texts, start=1):
+            if not page_text:
+                continue
+            filtered = _filter_page_for_ai(page_text, header_template)
+            if _is_boilerplate_page(filtered):
+                continue
+            if filtered.strip():
+                ai_pages.append(f"--- Trang {index} ---\n{filtered}")
+        ai_text = "\n\n".join(ai_pages) or full_text
+
+        processed_text = ai_text[:max_characters]
         return PDFExtraction(
             filename=filename,
             text=processed_text,
@@ -101,7 +178,7 @@ def extract_pdf_text(
             character_count=total_characters,
             processed_characters=len(processed_text),
             page_texts=page_texts,
-            was_truncated=len(full_text) > max_characters,
+            was_truncated=len(ai_text) > max_characters,
         )
     finally:
         document.close()
