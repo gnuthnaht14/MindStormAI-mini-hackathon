@@ -62,7 +62,7 @@ Dữ liệu dưới đây lấy trực tiếp từ khảo sát 51 người. Câu
 
 | Nguyên tắc HAX/PAIR | Áp cụ thể vào prototype StudyFlow |
 |---|---|
-| Làm rõ hệ thống có thể làm gì | Hero và upload zone nói rõ chỉ nhận PDF có text layer và tạo summary + quiz tiếng Việt. |
+| Làm rõ hệ thống có thể làm gì | Hero và upload zone nói rõ chỉ nhận PDF có text layer; người dùng chọn tạo Summary hoặc Quiz tiếng Việt độc lập. |
 | Làm rõ giới hạn | PDF ít text trả thông báo chưa hỗ trợ OCR; tài liệu dài hiển thị cảnh báo chỉ xử lý phần đầu. |
 | Hiển thị trạng thái | UI tách trạng thái đang đọc PDF, đang gọi AI, thành công và lỗi bằng spinner/banner. |
 | Cho phép người dùng kiểm soát | Người dùng chọn số lượng/dạng câu hỏi, có thể tạo lại, upload file mới và tải Markdown. |
@@ -85,7 +85,7 @@ Dữ liệu dưới đây lấy trực tiếp từ khảo sát 51 người. Câu
 
 ## §6. Bốn đường đi của trải nghiệm
 
-- **Happy path:** Upload PDF có text → hệ thống đọc theo trang → hiển thị số trang/ký tự → nhấn “Tạo tài liệu ôn tập” → xem Summary/Quiz → mở đáp án → tải Markdown.
+- **Happy path:** Upload PDF có text → hệ thống đọc theo trang → hiển thị số trang/ký tự → chọn “Tạo AI Summary” hoặc “Tạo AI Quiz” → xem artifact đã chọn → ôn tập hoặc tải Markdown.
 - **Low-confidence (②):** Text vẫn đủ dùng nhưng tài liệu bị cắt hoặc một phần slide khó đọc → banner nêu rõ phạm vi đã xử lý; output chỉ dùng phần text thực có và ghi chú chỗ chưa đủ rõ.
 - **Failure/không căn cứ (①):** PDF hỏng/ảnh/không có text hoặc tài liệu không chứa câu trả lời → dừng đúng lớp, giải thích nguyên nhân; Q&A trả ABSTAIN, không dùng kiến thức ngoài.
 - **Correction — user sửa:** Upload nhầm file hoặc output chưa phù hợp → người dùng xóa/thay PDF, đổi số lượng/dạng câu hỏi và “Tạo lại”; state cũ bị reset.
@@ -163,3 +163,4 @@ Log CP5 phải ghi nguyên văn câu trả lời, tên/role người test, PDF d
 | 2026-07-30 CP4 | Chọn lát cắt gói ôn tập; khóa quality bar | Impact 18/20; first eval 90%, zero-tolerance 0 |
 | 2026-07-30 CP4 | Thay assumption impact bằng khảo sát `n=51` | 66,7% ưu tiên summary/key concepts; hai pain lớn nhất đạt 58,8% và 56,9% |
 | 2026-07-30 | Loại AI Notes, bắt đầu Summary V2 có citation | Notes trùng vai trò; tập trung nhu cầu summary/key concepts của 66,7% khảo sát |
+| 2026-07-31 | Tách API generation thành Summary và Quiz độc lập | Tránh sinh artifact người dùng không yêu cầu, giảm token, độ trễ và chi phí mỗi thao tác |

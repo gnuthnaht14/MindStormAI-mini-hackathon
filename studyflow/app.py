@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import sys
 import time
@@ -18,16 +17,24 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from studyflow.config import AppSettings  # noqa: E402
-from studyflow.models import CitedPoint, PDFExtraction, Question, StudyMaterial  # noqa: E402
+from studyflow.models import (  # noqa: E402
+    CitedPoint,
+    PDFExtraction,
+    Question,
+    QuizMaterial,
+    StudyMaterial,
+    SummaryMaterial,
+)
 from studyflow.services import (  # noqa: E402
     AIGenerationError,
     MissingAPIKeyError,
     PDFExtractionError,
     PDFValidationError,
-    build_markdown,
+    build_summary_markdown,
     calculate_quiz_score,
     extract_pdf_text,
-    generate_study_material,
+    generate_quiz,
+    generate_summary,
     is_correct_answer,
     validate_pdf,
 )
@@ -49,7 +56,7 @@ QUESTION_TYPE_LABELS = {
     "true_false": "Đúng / Sai",
     "short_answer": "Tự luận ngắn",
 }
-SESSION_SCHEMA_VERSION = 4
+SESSION_SCHEMA_VERSION = 5
 
 
 st.set_page_config(
@@ -197,9 +204,15 @@ def init_state() -> None:
                 "document_hash",
                 "extraction",
                 "material",
+                "summary_material",
+                "quiz_material",
                 "processing_error",
                 "generation_seconds",
+                "summary_generation_seconds",
+                "quiz_generation_seconds",
                 "is_demo",
+                "summary_is_demo",
+                "quiz_is_demo",
             } or key.startswith("pdf_upload_") or key.startswith("quiz_"):
                 del st.session_state[key]
 
@@ -208,10 +221,13 @@ def init_state() -> None:
         "uploader_nonce": 0,
         "document_hash": None,
         "extraction": None,
-        "material": None,
+        "summary_material": None,
+        "quiz_material": None,
         "processing_error": None,
-        "generation_seconds": None,
-        "is_demo": False,
+        "summary_generation_seconds": None,
+        "quiz_generation_seconds": None,
+        "summary_is_demo": False,
+        "quiz_is_demo": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -220,13 +236,23 @@ def init_state() -> None:
 
 def clear_quiz_state() -> None:
     for key in list(st.session_state):
-        if key.startswith("quiz_"):
+        if key.startswith("quiz_choice_") or key.startswith("quiz_result_"):
             del st.session_state[key]
 
 
 def clear_document_state(*, reset_uploader: bool = False) -> None:
-    for key in ("document_hash", "extraction", "material", "processing_error", "generation_seconds", "is_demo"):
-        st.session_state[key] = None if key != "is_demo" else False
+    for key in (
+        "document_hash",
+        "extraction",
+        "summary_material",
+        "quiz_material",
+        "processing_error",
+        "summary_generation_seconds",
+        "quiz_generation_seconds",
+    ):
+        st.session_state[key] = None
+    st.session_state.summary_is_demo = False
+    st.session_state.quiz_is_demo = False
     if reset_uploader:
         st.session_state.uploader_nonce += 1
     clear_quiz_state()
@@ -237,6 +263,8 @@ def load_demo() -> None:
     demo_text = DEMO_LESSON_PATH.read_text(encoding="utf-8")
     sections = [section.strip() for section in demo_text.split("\n## ") if section.strip()]
     material = StudyMaterial.model_validate_json(DEMO_OUTPUT_PATH.read_text(encoding="utf-8"))
+    summary = SummaryMaterial.model_validate(material.model_dump(exclude={"questions"}))
+    quiz = QuizMaterial(questions=material.questions)
     st.session_state.document_hash = "demo"
     st.session_state.extraction = PDFExtraction(
         filename="AI20K-Build-Phase-Onboarding-demo.pdf",
@@ -247,10 +275,13 @@ def load_demo() -> None:
         page_texts=sections,
         was_truncated=False,
     )
-    st.session_state.material = material
+    st.session_state.summary_material = summary
+    st.session_state.quiz_material = quiz
     st.session_state.processing_error = None
-    st.session_state.generation_seconds = 0.0
-    st.session_state.is_demo = True
+    st.session_state.summary_generation_seconds = 0.0
+    st.session_state.quiz_generation_seconds = 0.0
+    st.session_state.summary_is_demo = True
+    st.session_state.quiz_is_demo = True
     st.session_state.uploader_nonce += 1
 
 
@@ -291,7 +322,7 @@ def render_metrics(extraction: PDFExtraction) -> None:
 
 def source_label(source_pages: Sequence[int]) -> str:
     pages = ", ".join(str(page) for page in source_pages)
-    return f"📎 Nguồn: trang {pages}"
+    return f"Nguồn: trang {pages}"
 
 
 def render_cited_points(items: Sequence[CitedPoint], *, numbered: bool = False) -> None:
@@ -342,7 +373,6 @@ def render_question(question: Question, index: int, namespace: str) -> bool | No
         else:
             st.error(f"Chưa đúng. Đáp án đúng là: {question.answer}", icon="❌")
         st.markdown(f"**Giải thích:** {question.explanation}")
-        st.caption(source_label(question.source_pages))
         st.caption("🔒 Câu trả lời đã được khóa.")
         return correct
 
@@ -369,7 +399,7 @@ with st.sidebar:
         list(QUESTION_TYPE_OPTIONS),
         default=["Trắc nghiệm", "Đúng / Sai"],
     )
-    st.caption("MVP dùng một lần gọi AI để tạo summary và quiz cùng lúc.")
+    st.caption("Các tùy chọn này chỉ áp dụng khi tạo Quiz. Summary và Quiz gọi AI độc lập.")
 
     st.divider()
     st.markdown('<div class="side-kicker">Demo backup</div>', unsafe_allow_html=True)
@@ -386,8 +416,8 @@ st.markdown(
     """
     <section class="hero-card">
         <div class="eyebrow">From slides to active learning</div>
-        <h1>Biến slide thành tài liệu ôn tập trong một lần nhấn.</h1>
-        <p>Upload PDF có text layer, StudyFlow sẽ tạo bản tóm tắt có cấu trúc, giải thích khái niệm và dẫn nguồn theo từng trang.</p>
+        <h1>Biến slide thành tài liệu ôn tập theo nhu cầu.</h1>
+        <p>Upload PDF có text layer, sau đó chọn tạo Summary hoặc Quiz độc lập để tiết kiệm thời gian và chi phí AI.</p>
     </section>
     """,
     unsafe_allow_html=True,
@@ -438,32 +468,50 @@ with main_col:
                 st.warning("Tài liệu dài; MVP chỉ gửi phần nội dung đầu đến AI.")
 
             selected_question_types = [QUESTION_TYPE_OPTIONS[label] for label in selected_type_labels]
-            generate_label = "Tạo lại tài liệu ôn tập" if st.session_state.material else "Tạo tài liệu ôn tập"
-            if st.button(
-                f"✦ {generate_label}",
-                type="primary",
-                use_container_width=True,
-                disabled=not selected_question_types,
-            ):
-                started_at = time.perf_counter()
-                try:
-                    with st.spinner("AI đang tóm tắt và tạo câu hỏi ôn tập…"):
-                        new_material = generate_study_material(
-                            extraction.text,
-                            question_count=question_count,
-                            question_types=selected_question_types,
-                            api_key=api_key,
-                            model=selected_model.strip() or "gpt-5.6-sol",
-                        )
+            summary_action_col, quiz_action_col = st.columns(2, gap="small")
+            with summary_action_col:
+                summary_label = "Tạo lại Summary" if st.session_state.summary_material else "Tạo AI Summary"
+                if st.button(f"✦ {summary_label}", type="primary", use_container_width=True):
+                    started_at = time.perf_counter()
+                    try:
+                        with st.spinner("AI đang tạo bản tóm tắt…"):
+                            st.session_state.summary_material = generate_summary(
+                                extraction.text,
+                                api_key=api_key,
+                                model=selected_model.strip() or "gpt-5.6-sol",
+                            )
+                        st.session_state.summary_generation_seconds = time.perf_counter() - started_at
+                        st.session_state.summary_is_demo = False
+                        st.rerun()
+                    except (MissingAPIKeyError, AIGenerationError, ValueError) as exc:
+                        st.error(str(exc), icon="⚠️")
+            with quiz_action_col:
+                quiz_label = "Tạo lại Quiz" if st.session_state.quiz_material else "Tạo AI Quiz"
+                if st.button(
+                    f"☷ {quiz_label}",
+                    use_container_width=True,
+                    disabled=not selected_question_types,
+                ):
+                    started_at = time.perf_counter()
+                    try:
+                        with st.spinner("AI đang tạo bộ câu hỏi…"):
+                            new_quiz = generate_quiz(
+                                extraction.text,
+                                question_count=question_count,
+                                question_types=selected_question_types,
+                                api_key=api_key,
+                                model=selected_model.strip() or "gpt-5.6-sol",
+                            )
                         clear_quiz_state()
-                        st.session_state.material = new_material
-                    st.session_state.generation_seconds = time.perf_counter() - started_at
-                    st.session_state.is_demo = False
-                    st.rerun()
-                except (MissingAPIKeyError, AIGenerationError, ValueError) as exc:
-                    st.error(str(exc), icon="⚠️")
+                        st.session_state.quiz_material = new_quiz
+                        st.session_state.quiz_generation_seconds = time.perf_counter() - started_at
+                        st.session_state.quiz_is_demo = False
+                        st.rerun()
+                    except (MissingAPIKeyError, AIGenerationError, ValueError) as exc:
+                        st.error(str(exc), icon="⚠️")
 
-    material: StudyMaterial | None = st.session_state.material
+    summary_material: SummaryMaterial | None = st.session_state.summary_material
+    quiz_material: QuizMaterial | None = st.session_state.quiz_material
     original_tab, summary_tab, flashcards_tab, quiz_tab = st.tabs(
         ["Original Content", "AI Summary", "AI Flashcards", "AI Quiz"]
     )
@@ -479,24 +527,24 @@ with main_col:
                     st.text(page_text or "Trang này không có text layer.")
 
     with summary_tab:
-        if material is None:
-            render_empty("Chưa có bản tóm tắt", "Đọc PDF và nhấn “Tạo tài liệu ôn tập” để bắt đầu.")
+        if summary_material is None:
+            render_empty("Chưa có bản tóm tắt", "Đọc PDF và nhấn “Tạo AI Summary” để bắt đầu.")
         else:
-            demo_label = " · output demo" if st.session_state.is_demo else ""
-            elapsed = st.session_state.generation_seconds
+            demo_label = " · output demo" if st.session_state.summary_is_demo else ""
+            elapsed = st.session_state.summary_generation_seconds
             timing = f" · {elapsed:.1f}s" if elapsed is not None else ""
-            st.caption(f"{len(material.key_concepts)} khái niệm trọng tâm{timing}{demo_label}")
-            st.header(material.title)
+            st.caption(f"{len(summary_material.key_concepts)} khái niệm trọng tâm{timing}{demo_label}")
+            st.header(summary_material.title)
 
             st.subheader("Tổng quan 30 giây")
-            st.info(material.overview.text)
-            st.caption(source_label(material.overview.source_pages))
+            st.info(summary_material.overview.text)
+            st.caption(source_label(summary_material.overview.source_pages))
 
             st.subheader("Sau bài này, bạn cần nắm được")
-            render_cited_points(material.learning_objectives)
+            render_cited_points(summary_material.learning_objectives)
 
             st.subheader("Khái niệm trọng tâm")
-            for concept in material.key_concepts:
+            for concept in summary_material.key_concepts:
                 with st.container(border=True):
                     st.markdown(f"### {concept.name}")
                     st.markdown(concept.simple_explanation)
@@ -504,26 +552,26 @@ with main_col:
                         st.markdown(f"**Ví dụ trong tài liệu:** {concept.example}")
                     st.caption(source_label(concept.source_pages))
 
-            if material.process_steps:
+            if summary_material.process_steps:
                 st.subheader("Quy trình từng bước")
-                render_cited_points(material.process_steps, numbered=True)
+                render_cited_points(summary_material.process_steps, numbered=True)
 
-            if material.common_misconceptions:
+            if summary_material.common_misconceptions:
                 st.subheader("Điểm dễ nhầm")
-                for item in material.common_misconceptions:
+                for item in summary_material.common_misconceptions:
                     st.warning(item.text)
                     st.caption(source_label(item.source_pages))
 
             st.subheader("Điều cần nhớ")
-            render_cited_points(material.takeaways)
+            render_cited_points(summary_material.takeaways)
 
-            markdown_export = build_markdown(material, extraction)
+            markdown_export = build_summary_markdown(summary_material, extraction)
             download_col, copy_col = st.columns(2)
             with download_col:
                 st.download_button(
                     "↓ Tải kết quả Markdown",
                     data=markdown_export,
-                    file_name="studyflow-study-material.md",
+                    file_name="studyflow-summary.md",
                     mime="text/markdown",
                     use_container_width=True,
                 )
@@ -536,21 +584,22 @@ with main_col:
         render_empty("AI Flashcards sắp có", "Schema flashcard và spaced repetition nằm ngoài phạm vi MVP đầu tiên.", "▱")
 
     with quiz_tab:
-        if material is None:
-            render_empty("Chưa có câu hỏi ôn tập", "AI sẽ tạo 5–10 câu hỏi có đáp án và giải thích từ PDF của bạn.", "☷")
+        if quiz_material is None:
+            render_empty("Chưa có câu hỏi ôn tập", "Nhấn “Tạo AI Quiz” để sinh 5–10 câu hỏi riêng từ PDF.", "☷")
         else:
-            st.subheader(f"Bộ câu hỏi ôn tập · {len(material.questions)} câu")
+            quiz_timing = st.session_state.quiz_generation_seconds
+            timing_label = f" · tạo trong {quiz_timing:.1f}s" if quiz_timing is not None else ""
+            st.subheader(f"Bộ câu hỏi ôn tập · {len(quiz_material.questions)} câu")
+            st.caption(f"Quiz được sinh độc lập với Summary{timing_label}.")
             st.caption("Mỗi câu chỉ được trả lời một lần. Điểm chỉ hiển thị sau khi hoàn thành toàn bộ bài quiz.")
-            quiz_namespace = st.session_state.document_hash or hashlib.sha256(
-                material.title.encode("utf-8")
-            ).hexdigest()
+            quiz_namespace = st.session_state.document_hash or "quiz"
             checked_results: list[bool] = []
-            for question_index, question in enumerate(material.questions, start=1):
+            for question_index, question in enumerate(quiz_material.questions, start=1):
                 result = render_question(question, question_index, quiz_namespace)
                 if result is not None:
                     checked_results.append(result)
             answered_count = len(checked_results)
-            total_questions = len(material.questions)
+            total_questions = len(quiz_material.questions)
             st.progress(
                 answered_count / total_questions,
                 text=f"Đã trả lời {answered_count}/{total_questions} câu",
@@ -568,7 +617,8 @@ with main_col:
 
 with tutor_col:
     extraction_ready = extraction is not None
-    material_ready = st.session_state.material is not None
+    summary_ready = st.session_state.summary_material is not None
+    quiz_ready = st.session_state.quiz_material is not None
     st.markdown(
         f"""
         <aside class="tutor-panel">
@@ -578,8 +628,9 @@ with tutor_col:
             <p>StudyFlow biến nội dung thụ động thành một gói ôn tập có cấu trúc.</p>
             <div class="pipeline-step"><span class="step-dot {'done' if extraction_ready else ''}">1</span>Upload PDF bài giảng</div>
             <div class="pipeline-step"><span class="step-dot {'done' if extraction_ready else ''}">2</span>Extract text theo trang</div>
-            <div class="pipeline-step"><span class="step-dot {'done' if material_ready else ''}">3</span>AI Summary + Quiz</div>
-            <div class="pipeline-step"><span class="step-dot">4</span>Ôn tập và tải kết quả</div>
+            <div class="pipeline-step"><span class="step-dot {'done' if summary_ready else ''}">3</span>AI Summary (tùy chọn)</div>
+            <div class="pipeline-step"><span class="step-dot {'done' if quiz_ready else ''}">4</span>AI Quiz (tùy chọn)</div>
+            <div class="pipeline-step"><span class="step-dot">5</span>Ôn tập và tải kết quả</div>
             <div class="coming">Hỏi đáp trực tiếp trên tài liệu sẽ được bổ sung sau MVP.</div>
         </aside>
         """,

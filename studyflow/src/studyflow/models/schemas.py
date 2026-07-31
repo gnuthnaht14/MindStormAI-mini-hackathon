@@ -87,7 +87,7 @@ class Question(BaseModel):
         return self
 
 
-class StudyMaterial(BaseModel):
+class SummaryMaterial(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     title: str = Field(min_length=3, max_length=160)
@@ -97,4 +97,15 @@ class StudyMaterial(BaseModel):
     process_steps: list[CitedPoint] = Field(max_length=10)
     common_misconceptions: list[CitedPoint] = Field(max_length=6)
     takeaways: list[CitedPoint] = Field(min_length=3, max_length=8)
+
+
+class QuizMaterial(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    questions: list[Question] = Field(min_length=5, max_length=10)
+
+
+class StudyMaterial(SummaryMaterial):
+    """Legacy combined schema used only to load old demo/export payloads."""
+
     questions: list[Question] = Field(min_length=5, max_length=10)

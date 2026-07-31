@@ -1,6 +1,6 @@
 # StudyFlow AI Tutor MVP
 
-MVP Streamlit biến PDF bài giảng thành bản tóm tắt và bộ câu hỏi ôn tập có đáp án trong một lần gọi OpenAI.
+MVP Streamlit biến PDF bài giảng thành bản tóm tắt hoặc bộ câu hỏi ôn tập bằng hai luồng OpenAI độc lập.
 
 ## Tính năng
 
