@@ -1,0 +1,53 @@
+{
+  "run_at": "2026-07-31T10:00:05+07:00",
+  "dataset": "eval/dataset_summary.jsonl",
+  "total": 2,
+  "pass": 2,
+  "fail": 0,
+  "error": 0,
+  "review": 0,
+  "pass_rate": 1.0,
+  "avg_score_percent": 85.0,
+  "pass_threshold_percent": 80.0,
+  "review_threshold_percent": 65.0,
+  "criteria_used": {
+    "faithfulness": {
+      "weight_percent": 40,
+      "label": "Độ trung thực (không bịa)"
+    },
+    "coverage": {
+      "weight_percent": 30,
+      "label": "Độ bao quát ý chính"
+    },
+    "conciseness": {
+      "weight_percent": 15,
+      "label": "Độ súc tích"
+    },
+    "coherence": {
+      "weight_percent": 15,
+      "label": "Mạch lạc / dễ đọc"
+    }
+  },
+  "zero_tolerance_rule": "Tóm tắt không được bịa số liệu/nội dung (faithfulness <= 2/5 hoặc có hallucinated_claims)",
+  "zero_tolerance_violations": 0,
+  "zero_tolerance_passed": true,
+  "overall_passed": true,
+  "by_category": {
+    "coverage": {
+      "pass": 1,
+      "total": 1
+    },
+    "hallucination": {
+      "pass": 1,
+      "total": 1
+    },
+    "high_risk": {
+      "pass": 1,
+      "total": 1
+    },
+    "numeric_accuracy": {
+      "pass": 1,
+      "total": 1
+    }
+  }
+}

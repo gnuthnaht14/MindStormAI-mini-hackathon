@@ -1,0 +1,2 @@
+{"id":"SUM-001","source_document":"data/1-day04-prompt-engineering-tool-calling-v2.pdf","category":["coverage","hallucination"],"risk":"medium","origin":"real_observation","max_words":150,"notes":"Tài liệu onboarding chung, có nhiều mốc thời gian và tên công cụ (Discord, GitHub)."}
+{"id":"SUM-002","source_document":"data/1-day04-prompt-engineering-tool-calling-v2.pdf","category":["numeric_accuracy","high_risk"],"risk":"critical","origin":"real_observation","max_words":150,"notes":"Chứa mốc '30 phút' báo blocker — số liệu quan trọng phải giữ nguyên trong tóm tắt."}

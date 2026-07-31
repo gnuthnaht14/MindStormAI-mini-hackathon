@@ -13,7 +13,7 @@ Chatbot hỗ trợ học từ slide: đọc PDF/PPTX, tạo AI Notes, AI Summary
 ## Chạy UI
 
 ```bash
-cd starter_v0
+cd studyflow
 python -m pip install -r requirements.txt
 streamlit run app.py
 ```
